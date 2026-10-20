@@ -1,0 +1,386 @@
+import { create } from 'zustand';
+import type { LeaderboardEntry, Place, Vote, VotingSession, Zone } from '../types';
+import { initialZones } from '../data/initialData';
+import { VotingService } from '../services/votingService';
+import { getOrCreateUserId } from '../services/identityService';
+
+interface AppState {
+  // State
+  zones: Zone[];
+  places: Place[];
+  votes: Vote[];
+  activeSession: VotingSession | null;
+  userId: string;
+  selectedZoneId: string | null;
+  hoveredZoneId: string | null;
+  selectedPlaceId: string | null;
+  is3D: boolean;
+  showZones: boolean;
+  isLeaderboardOpen: boolean;
+  isAddPlaceOpen: boolean;
+  isSidebarOpen: boolean;
+  searchQuery: string;
+  selectedCategory: string;
+  isLoading: boolean;
+  mapInstance: any | null;
+  currentView: 'map' | 'results';
+  isQrModalOpen: boolean;
+  qrTargetPlaceId: string | null;
+
+  // Actions
+  init: () => Promise<void>;
+  setCurrentView: (view: 'map' | 'results') => void;
+  toggleQrModal: (open?: boolean, placeId?: string | null) => void;
+  setMapInstance: (map: any) => void;
+  selectZone: (zoneId: string | null, shouldFly?: boolean) => void;
+  setHoveredZone: (zoneId: string | null) => void;
+  selectPlace: (placeId: string | null, shouldFly?: boolean) => void;
+  toggle3D: () => void;
+  toggleZones: () => void;
+  toggleLeaderboard: (open?: boolean) => void;
+  toggleAddPlace: (open?: boolean) => void;
+  toggleSidebar: (open?: boolean) => void;
+  setSearchQuery: (query: string) => void;
+  setSelectedCategory: (cat: string) => void;
+  castVote: (placeId: string) => Promise<{ success: boolean; action: string }>;
+  addPlace: (newPlace: Omit<Place, 'id' | 'created_at'>) => Promise<Place>;
+  resetCamera: () => void;
+
+  // Computed helpers
+  getLeaderboard: () => LeaderboardEntry[];
+  getUserVotedPlaceId: () => string | null;
+  getFilteredPlaces: () => Place[];
+  getZoneStats: (zoneId: string) => { placesCount: number; votesCount: number };
+}
+
+export const useAppStore = create<AppState>((set, get) => ({
+  zones: initialZones,
+  places: [],
+  votes: [],
+  activeSession: null,
+  userId: getOrCreateUserId(),
+  selectedZoneId: null,
+  hoveredZoneId: null,
+  selectedPlaceId: null,
+  is3D: true,
+  showZones: true,
+  isLeaderboardOpen: false,
+  isAddPlaceOpen: false,
+  isSidebarOpen: false,
+  searchQuery: '',
+  selectedCategory: 'all',
+  isLoading: true,
+  mapInstance: null,
+  currentView: 'map',
+  isQrModalOpen: false,
+  qrTargetPlaceId: null,
+
+  init: async () => {
+    try {
+      set({ isLoading: true });
+      const [session, places] = await Promise.all([
+        VotingService.getActiveSession(),
+        VotingService.getPlaces()
+      ]);
+      const votes = await VotingService.getVotes(session.id);
+
+      set({
+        activeSession: session,
+        places,
+        votes,
+        isLoading: false
+      });
+
+      // Subscribe to real-time events
+      VotingService.subscribeToUpdates(async () => {
+        const currentSession = get().activeSession;
+        if (!currentSession) return;
+        const [updatedPlaces, updatedVotes] = await Promise.all([
+          VotingService.getPlaces(),
+          VotingService.getVotes(currentSession.id)
+        ]);
+        set({ places: updatedPlaces, votes: updatedVotes });
+      });
+    } catch (err) {
+      console.error('Initialization error:', err);
+      set({ isLoading: false });
+    }
+  },
+
+  setCurrentView: (view) => set({ currentView: view }),
+  toggleQrModal: (open, placeId = null) => {
+    set((state) => ({
+      isQrModalOpen: open !== undefined ? open : !state.isQrModalOpen,
+      qrTargetPlaceId: placeId !== undefined ? placeId : state.qrTargetPlaceId
+    }));
+  },
+
+  setMapInstance: (map) => set({ mapInstance: map }),
+
+  selectZone: (zoneId, shouldFly = true) => {
+    set({ selectedZoneId: zoneId });
+    const { mapInstance, zones } = get();
+    if (!mapInstance) return;
+
+    if (!zoneId) {
+      // Fly to Chiang Mai whole overview
+      if (shouldFly) {
+        mapInstance.flyTo({
+          center: [98.986, 18.789],
+          zoom: 12.2,
+          pitch: get().is3D ? 45 : 0,
+          bearing: get().is3D ? -15 : 0,
+          duration: 1500,
+          essential: true
+        });
+      }
+      return;
+    }
+
+    const zone = zones.find(z => z.id === zoneId);
+    if (zone && shouldFly) {
+      if (zone.boundingbox) {
+        // [minLat, maxLat, minLon, maxLon]
+        const south = parseFloat(zone.boundingbox[0]);
+        const north = parseFloat(zone.boundingbox[1]);
+        const west = parseFloat(zone.boundingbox[2]);
+        const east = parseFloat(zone.boundingbox[3]);
+        mapInstance.fitBounds([[west, south], [east, north]], {
+          padding: { top: 100, bottom: 100, left: 340, right: 100 },
+          maxZoom: 15.5,
+          pitch: get().is3D ? 45 : 0,
+          duration: 1400
+        });
+      } else {
+        mapInstance.flyTo({
+          center: zone.center,
+          zoom: 14,
+          pitch: get().is3D ? 45 : 0,
+          duration: 1400,
+          essential: true
+        });
+      }
+    }
+  },
+
+  setHoveredZone: (zoneId) => set({ hoveredZoneId: zoneId }),
+
+  selectPlace: (placeId, shouldFly = true) => {
+    set({ selectedPlaceId: placeId });
+    const { mapInstance, places } = get();
+    if (!placeId || !mapInstance) return;
+
+    const place = places.find(p => p.id === placeId);
+    if (place && shouldFly) {
+      mapInstance.flyTo({
+        center: [place.longitude, place.latitude],
+        zoom: 16.5,
+        pitch: get().is3D ? 52 : 0,
+        bearing: get().is3D ? -20 : 0,
+        duration: 1600,
+        offset: [0, 50], // Offset so panel doesn't completely block pin
+        essential: true
+      });
+    }
+  },
+
+  toggle3D: () => {
+    const next3D = !get().is3D;
+    set({ is3D: next3D });
+    const map = get().mapInstance;
+    if (map) {
+      map.easeTo({
+        pitch: next3D ? 48 : 0,
+        bearing: next3D ? -15 : 0,
+        duration: 1000
+      });
+
+      // Update 3D buildings layer if present
+      if (map.getLayer('3d-buildings')) {
+        map.setLayoutProperty('3d-buildings', 'visibility', next3D ? 'visible' : 'none');
+      }
+    }
+  },
+
+  toggleZones: () => {
+    const nextShow = !get().showZones;
+    set({ showZones: nextShow });
+    const map = get().mapInstance;
+    if (map) {
+      const visibility = nextShow ? 'visible' : 'none';
+      ['chiangmai-zones-fill', 'chiangmai-zones-line', 'chiangmai-zones-labels'].forEach(layerId => {
+        if (map.getLayer(layerId)) {
+          map.setLayoutProperty(layerId, 'visibility', visibility);
+        }
+      });
+    }
+  },
+
+  toggleLeaderboard: (open) => {
+    set(state => ({
+      isLeaderboardOpen: open !== undefined ? open : !state.isLeaderboardOpen
+    }));
+  },
+
+  toggleAddPlace: (open) => {
+    set(state => ({
+      isAddPlaceOpen: open !== undefined ? open : !state.isAddPlaceOpen
+    }));
+  },
+
+  toggleSidebar: (open) => {
+    set(state => ({
+      isSidebarOpen: open !== undefined ? open : !state.isSidebarOpen
+    }));
+  },
+
+  setSearchQuery: (query) => set({ searchQuery: query }),
+  setSelectedCategory: (cat) => set({ selectedCategory: cat }),
+
+  castVote: async (placeId) => {
+    const { activeSession, userId } = get();
+    if (!activeSession) {
+      return { success: false, action: 'NO_SESSION' };
+    }
+
+    try {
+      const result = await VotingService.castOrChangeVote(
+        activeSession.id,
+        placeId,
+        userId
+      );
+
+      // Refresh votes
+      const votes = await VotingService.getVotes(activeSession.id);
+      set({ votes });
+
+      return { success: true, action: result.action };
+    } catch (err: any) {
+      console.error('Vote failed:', err);
+      return { success: false, action: 'ERROR' };
+    }
+  },
+
+  addPlace: async (newPlace) => {
+    const created = await VotingService.addPlace(newPlace);
+    set(state => ({ places: [...state.places, created] }));
+    return created;
+  },
+
+  resetCamera: () => {
+    const map = get().mapInstance;
+    if (map) {
+      set({ selectedZoneId: null });
+      map.flyTo({
+        center: [98.986, 18.789],
+        zoom: 12.2,
+        pitch: get().is3D ? 45 : 0,
+        bearing: get().is3D ? -15 : 0,
+        duration: 1500,
+        essential: true
+      });
+    }
+  },
+
+  // COMPUTED
+  getLeaderboard: () => {
+    const { places, zones, votes, activeSession } = get();
+    if (!activeSession) return [];
+
+    const voteCountMap = new Map<string, number>();
+    places.forEach(p => voteCountMap.set(p.id, 0));
+
+    votes.forEach(v => {
+      const current = voteCountMap.get(v.place_id) || 0;
+      voteCountMap.set(v.place_id, current + 1);
+    });
+
+    const totalVotes = votes.length;
+
+    const entries = places.map(p => {
+      const count = voteCountMap.get(p.id) || 0;
+      const zone = zones.find(z => z.id === p.zone_id);
+      const percentage = totalVotes > 0 ? Math.round((count / totalVotes) * 100) : 0;
+      return {
+        place: p,
+        zone,
+        votes_count: count,
+        percentage,
+        rank: 0,
+        is_winner: false,
+        is_tied: false
+      };
+    });
+
+    // Sort descending by votes
+    entries.sort((a, b) => b.votes_count - a.votes_count);
+
+    // Calculate ranks and ties
+    let currentRank = 1;
+    for (let i = 0; i < entries.length; i++) {
+      if (i > 0 && entries[i].votes_count < entries[i - 1].votes_count) {
+        currentRank = i + 1;
+      }
+      entries[i].rank = currentRank;
+    }
+
+    // Check tie at rank 1
+    if (entries.length > 0 && entries[0].votes_count > 0) {
+      const topVotes = entries[0].votes_count;
+      const topCount = entries.filter(e => e.votes_count === topVotes).length;
+      entries.forEach(e => {
+        if (e.votes_count === topVotes) {
+          e.is_winner = activeSession.status === 'completed' && topCount === 1;
+          e.is_tied = topCount > 1;
+        }
+      });
+    }
+
+    return entries;
+  },
+
+  getUserVotedPlaceId: () => {
+    const { votes, userId, activeSession } = get();
+    if (!activeSession) return null;
+    const userVote = votes.find(
+      v => v.session_id === activeSession.id && v.user_id === userId
+    );
+    return userVote ? userVote.place_id : null;
+  },
+
+  getFilteredPlaces: () => {
+    const { places, selectedZoneId, searchQuery, selectedCategory } = get();
+    return places.filter(place => {
+      // Zone match
+      if (selectedZoneId && place.zone_id !== selectedZoneId) {
+        return false;
+      }
+      // Category match
+      if (selectedCategory !== 'all' && place.category !== selectedCategory) {
+        return false;
+      }
+      // Search match
+      if (searchQuery.trim()) {
+        const q = searchQuery.toLowerCase();
+        const matchesName = place.name.toLowerCase().includes(q) || (place.name_en?.toLowerCase().includes(q) ?? false);
+        const matchesDesc = place.description.toLowerCase().includes(q);
+        const matchesAddress = place.address.toLowerCase().includes(q);
+        if (!matchesName && !matchesDesc && !matchesAddress) {
+          return false;
+        }
+      }
+      return true;
+    });
+  },
+
+  getZoneStats: (zoneId: string) => {
+    const { places, votes } = get();
+    const zonePlaces = places.filter(p => p.zone_id === zoneId);
+    const placeIdSet = new Set(zonePlaces.map(p => p.id));
+    const votesCount = votes.filter(v => placeIdSet.has(v.place_id)).length;
+    return {
+      placesCount: zonePlaces.length,
+      votesCount
+    };
+  }
+}));
