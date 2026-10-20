@@ -56,7 +56,7 @@ export const AddPlaceModal: React.FC = () => {
     setError(null);
 
     if (!name.trim()) {
-      setError('กรุณาระบุชื่อสถานที่');
+      setError('กรุณาระบุชื่อร้านหมูกระทะ');
       return;
     }
 
@@ -88,7 +88,7 @@ export const AddPlaceModal: React.FC = () => {
         latitude: lat,
         longitude: lng,
         address: address.trim() || 'อำเภอเมือง จังหวัดเชียงใหม่',
-        description: description.trim() || `สถานที่น่าสนใจในโซน ${zones.find(z => z.id === zoneId)?.name_th}`,
+        description: description.trim() || `ร้านหมูกระทะในโซน ${zones.find(z => z.id === zoneId)?.name_th}`,
         image_url: imageUrl.trim() || 'https://images.unsplash.com/photo-1555396273-367ea4eb4db5?auto=format&fit=crop&w=1200&q=80',
         verification_status: finalStatus
       });
@@ -113,8 +113,8 @@ export const AddPlaceModal: React.FC = () => {
               <PlusCircle className="w-5 h-5" />
             </div>
             <div>
-              <h2 className="text-sm sm:text-base font-bold text-white m-0">เพิ่มสถานที่ใหม่ในเชียงใหม่</h2>
-              <p className="text-[11px] text-zinc-400 m-0">ปักหมุดพร้อมตรวจสอบพิกัดจริงเพื่อเข้าร่วมระบบโหวต</p>
+              <h2 className="text-sm sm:text-base font-bold text-white m-0">เพิ่มร้านหมูกระทะ</h2>
+              <p className="text-[11px] text-zinc-400 m-0">ปักหมุดร้านพร้อมพิกัดเพื่อเข้าร่วมระบบโหวต</p>
             </div>
           </div>
 
@@ -143,7 +143,7 @@ export const AddPlaceModal: React.FC = () => {
             <input
               type="text"
               required
-              placeholder="เช่น หมูกระทะช้างเผือก, วัดอุโมงค์..."
+              placeholder="เช่น ร้านหมูกระทะ..."
               value={name}
               onChange={(e) => setName(e.target.value)}
               className="w-full bg-zinc-900 text-zinc-100 px-3 py-2 rounded-xl border border-zinc-700 focus:outline-none focus:border-amber-500"
@@ -192,12 +192,7 @@ export const AddPlaceModal: React.FC = () => {
                 onChange={(e) => setCategory(e.target.value)}
                 className="w-full bg-zinc-900 text-zinc-100 px-3 py-2 rounded-xl border border-zinc-700 focus:outline-none focus:border-amber-500"
               >
-                <option value="ร้านอาหาร & หมูกระทะ">ร้านอาหาร & หมูกระทะ</option>
-                <option value="คอมมูนิตี้มอลล์ & ไลฟ์สไตล์">คอมมูนิตี้มอลล์ & ไลฟ์สไตล์</option>
-                <option value="วัด & โบราณสถาน">วัด & โบราณสถาน</option>
-                <option value="ชุมชนศิลปะ & คาเฟ่">ชุมชนศิลปะ & คาเฟ่</option>
-                <option value="ธรรมชาติ & จุดชมวิว">ธรรมชาติ & จุดชมวิว</option>
-                <option value="สถานบันเทิง & บาร์">สถานบันเทิง & บาร์</option>
+                <option value="ร้านอาหาร & หมูกระทะ">ร้านหมูกระทะ</option>
               </select>
             </div>
           </div>

@@ -1,10 +1,11 @@
 import React, { useEffect, useRef } from 'react';
-import { Map, Marker, AttributionControl, setWorkerUrl } from 'maplibre-gl';
+import { Map, Marker, AttributionControl, setWorkerUrl, Point } from 'maplibre-gl';
 import type { FeatureCollection, Feature } from 'geojson';
 import { useAppStore } from '../store/useAppStore';
 import { 
   Compass, 
   Layers, 
+  ChevronDown,
   Minus, 
   Plus, 
   RotateCcw
@@ -29,9 +30,11 @@ export const MapContainer: React.FC = () => {
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<Map | null>(null);
   const markersRef = useRef<{ [placeId: string]: Marker }>({});
+  const [mapControlsOpen, setMapControlsOpen] = React.useState(true);
 
   const {
     zones,
+    hiddenZoneIds,
     places,
     votes,
     selectedZoneId,
@@ -48,6 +51,18 @@ export const MapContainer: React.FC = () => {
     resetCamera,
     getLeaderboard
   } = useAppStore();
+
+  useEffect(() => {
+    if (useAppStore.getState().currentView !== 'map') return;
+    const map = mapRef.current;
+    if (!map) return;
+
+    const resizeFrame = requestAnimationFrame(() => {
+      map.resize();
+    });
+
+    return () => cancelAnimationFrame(resizeFrame);
+  }, [useAppStore(state => state.currentView)]);
 
   const leaderboard = getLeaderboard();
   const topPlaceId = leaderboard.length > 0 && leaderboard[0].votes_count > 0 ? leaderboard[0].place.id : null;
@@ -118,7 +133,7 @@ export const MapContainer: React.FC = () => {
                 'fill-extrusion-color': [
                   'interpolate',
                   ['linear'],
-                  ['get', 'render_height'],
+                  ['coalesce', ['to-number', ['get', 'render_height']], ['to-number', ['get', 'height']], 8],
                   0, '#e2e8f0',
                   20, '#cbd5e1',
                   50, '#94a3b8'
@@ -128,15 +143,19 @@ export const MapContainer: React.FC = () => {
                   ['linear'],
                   ['zoom'],
                   13, 0,
-                  14.5, ['coalesce', ['get', 'render_height'], ['get', 'height'], 8]
+                  14.5, ['max', 1, ['coalesce', ['to-number', ['get', 'render_height']], ['to-number', ['get', 'height']], 8]]
                 ],
                 'fill-extrusion-base': [
                   'interpolate',
                   ['linear'],
                   ['zoom'],
                   13, 0,
-                  14.5, ['coalesce', ['get', 'render_min_height'], ['get', 'min_height'], 0]
+                  14.5, ['min',
+                    ['max', 0, ['coalesce', ['to-number', ['get', 'render_min_height']], ['to-number', ['get', 'min_height']], 0]],
+                    ['max', 1, ['coalesce', ['to-number', ['get', 'render_height']], ['to-number', ['get', 'height']], 8]]
+                  ]
                 ],
+                'fill-extrusion-vertical-gradient': false,
                 'fill-extrusion-opacity': 0.8
               }
             },
@@ -178,6 +197,7 @@ export const MapContainer: React.FC = () => {
             id: 'chiangmai-zones-fill',
             type: 'fill',
             source: 'chiangmai-zones',
+            filter: ['!', ['in', ['get', 'id'], ['literal', hiddenZoneIds]]],
             paint: {
               'fill-color': ['get', 'color'],
               'fill-opacity': [
@@ -194,6 +214,7 @@ export const MapContainer: React.FC = () => {
             id: 'chiangmai-zones-line',
             type: 'line',
             source: 'chiangmai-zones',
+            filter: ['!', ['in', ['get', 'id'], ['literal', hiddenZoneIds]]],
             paint: {
               'line-color': [
                 'case',
@@ -216,6 +237,7 @@ export const MapContainer: React.FC = () => {
             id: 'chiangmai-zones-labels',
             type: 'symbol',
             source: 'chiangmai-zones',
+            filter: ['!', ['in', ['get', 'id'], ['literal', hiddenZoneIds]]],
             layout: {
               'text-field': ['get', 'name_th'],
               'text-font': ['Noto Sans Regular', 'Open Sans Regular'],
@@ -240,10 +262,26 @@ export const MapContainer: React.FC = () => {
           // Zone Hover & Click interactions
           let hoveredFeatureId: string | number | null = null;
 
+          const getTopZoneFeature = (point: Point) =>
+            map.queryRenderedFeatures(point, { layers: ['chiangmai-zones-fill'] })
+              .sort((a, b) => {
+                const area = (feature: typeof a) => {
+                  const geometry = feature.geometry as any;
+                  const rings = geometry.type === 'Polygon' ? geometry.coordinates : geometry.coordinates.flat();
+                  return rings.reduce((sum: number, ring: number[][]) => {
+                    const xs = ring.map(([x]) => x);
+                    const ys = ring.map(([, y]) => y);
+                    return sum + Math.abs((Math.max(...xs) - Math.min(...xs)) * (Math.max(...ys) - Math.min(...ys)));
+                  }, 0);
+                };
+                return area(a) - area(b);
+              })[0];
+
           map.on('mousemove', 'chiangmai-zones-fill', (e: any) => {
-            if (e.features && e.features.length > 0) {
+            const feature = getTopZoneFeature(e.point);
+            if (feature) {
               map.getCanvas().style.cursor = 'pointer';
-              const feature = e.features[0];
+              if (hoveredFeatureId === feature.id) return;
               if (hoveredFeatureId !== null) {
                 map.setFeatureState({ source: 'chiangmai-zones', id: hoveredFeatureId }, { hover: false });
               }
@@ -263,8 +301,9 @@ export const MapContainer: React.FC = () => {
           });
 
           map.on('click', 'chiangmai-zones-fill', (e: any) => {
-            if (e.features && e.features.length > 0) {
-              const zoneId = e.features[0].properties?.id;
+            const feature = getTopZoneFeature(e.point);
+            if (feature) {
+              const zoneId = feature.properties?.id;
               selectZone(zoneId);
             }
           });
@@ -304,15 +343,24 @@ export const MapContainer: React.FC = () => {
     });
   }, [selectedZoneId, hoveredZoneId, zones]);
 
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !map.isStyleLoaded()) return;
+    const visibleZonesFilter: any = ['!', ['in', ['get', 'id'], ['literal', hiddenZoneIds]]];
+    ['chiangmai-zones-fill', 'chiangmai-zones-line', 'chiangmai-zones-labels'].forEach(layerId => {
+      if (map.getLayer(layerId)) map.setFilter(layerId, visibleZonesFilter);
+    });
+  }, [hiddenZoneIds]);
+
   // Update Markers
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
 
-    // Filter places if a zone is selected
+    const visiblePlaces = places.filter(place => !hiddenZoneIds.includes(place.zone_id));
     const activePlaces = selectedZoneId
-      ? places.filter(p => p.zone_id === selectedZoneId)
-      : places;
+      ? visiblePlaces.filter(place => place.zone_id === selectedZoneId)
+      : visiblePlaces;
 
     // Remove obsolete markers
     const currentPlaceIds = new Set(activePlaces.map(p => p.id));
@@ -402,7 +450,7 @@ export const MapContainer: React.FC = () => {
         }
       }
     });
-  }, [places, votes, selectedZoneId, selectedPlaceId, topPlaceId]);
+  }, [places, votes, selectedZoneId, selectedPlaceId, hiddenZoneIds, topPlaceId]);
 
   // Floating Controls Handlers
   const handleZoomIn = () => mapRef.current?.zoomIn();
@@ -419,7 +467,16 @@ export const MapContainer: React.FC = () => {
       />
 
       {/* Floating Map Controls (Right Side) */}
-      <div className="absolute right-4 top-20 flex flex-col gap-2 z-20">
+      <div className={`absolute top-20 flex flex-col gap-2 z-20 transition-[right] duration-200 ${mapControlsOpen ? 'right-4' : 'right-0'}`}>
+        <button
+          onClick={() => setMapControlsOpen(open => !open)}
+          aria-expanded={mapControlsOpen}
+          title={mapControlsOpen ? 'ซ่อนแถบเครื่องมือแผนที่' : 'แสดงแถบเครื่องมือแผนที่'}
+          className="self-end flex items-center justify-center w-10 h-10 rounded-l-xl bg-zinc-900/95 text-zinc-200 border border-r-0 border-zinc-700/70 shadow-xl backdrop-blur-md hover:bg-zinc-800 transition"
+        >
+          <ChevronDown className={`w-4 h-4 transition-transform ${mapControlsOpen ? '' : 'rotate-180'}`} />
+        </button>
+        {mapControlsOpen && <>
         {/* 2D / 3D Toggle Button */}
         <button
           onClick={toggle3D}
@@ -437,11 +494,7 @@ export const MapContainer: React.FC = () => {
         <button
           onClick={toggleZones}
           title={showZones ? 'ซ่อนขอบเขตโซน (Hide Zones)' : 'แสดงขอบเขตโซน (Show Zones)'}
-          className={`flex items-center justify-center w-11 h-11 rounded-xl shadow-xl backdrop-blur-md border transition-all active:scale-95 ${
-            showZones
-              ? 'bg-zinc-800/90 text-amber-400 border-zinc-600'
-              : 'bg-zinc-900/80 text-zinc-500 border-zinc-800 hover:text-zinc-300'
-          }`}
+          className={`flex items-center justify-center w-11 h-11 rounded-xl shadow-xl backdrop-blur-md border transition-all active:scale-95 ${showZones ? 'bg-zinc-800/90 text-amber-400 border-zinc-600' : 'bg-zinc-900/80 text-zinc-500 border-zinc-800 hover:text-zinc-300'}`}
         >
           <Layers className="w-5 h-5" />
         </button>
@@ -481,6 +534,7 @@ export const MapContainer: React.FC = () => {
         >
           <Compass className="w-5 h-5" />
         </button>
+        </>}
       </div>
 
       {/* Selected Zone Pill (Bottom Center) */}

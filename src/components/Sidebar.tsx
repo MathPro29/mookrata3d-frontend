@@ -3,14 +3,18 @@ import { useAppStore } from '../store/useAppStore';
 import { 
   Search, 
   ChevronRight, 
+  ChevronLeft,
   X, 
   CheckCircle2, 
-  Globe2
+  Globe2,
+  Eye,
+  EyeOff
 } from 'lucide-react';
 
 export const Sidebar: React.FC = () => {
   const {
     zones,
+    hiddenZoneIds,
     places,
     selectedZoneId,
     hoveredZoneId,
@@ -24,6 +28,7 @@ export const Sidebar: React.FC = () => {
     setSearchQuery,
     setSelectedCategory,
     toggleSidebar,
+    toggleZoneVisibility,
     getFilteredPlaces,
     getZoneStats
   } = useAppStore();
@@ -34,16 +39,22 @@ export const Sidebar: React.FC = () => {
   const currentZone = zones.find(z => z.id === selectedZoneId);
 
   const categories = [
-    { id: 'all', label: 'ทั้งหมด' },
-    { id: 'ร้านอาหาร & หมูกระทะ', label: '🥩 หมูกระทะ & ปิ้งย่าง' },
-    { id: 'คอมมูนิตี้มอลล์ & ไลฟ์สไตล์', label: '🛍️ ช้อปปิ้ง & มอลล์' },
-    { id: 'วัด & โบราณสถาน', label: '🛕 วัด & วัฒนธรรม' },
-    { id: 'ชุมชนศิลปะ & คาเฟ่', label: '☕ คาเฟ่ & ศิลปะ' },
-    { id: 'ธรรมชาติ & จุดชมวิว', label: '🌲 ธรรมชาติ' }
+    { id: 'all', label: 'ร้านหมูกระทะทั้งหมด' },
+    { id: 'ร้านอาหาร & หมูกระทะ', label: 'หมูกระทะ' }
   ];
 
   return (
     <>
+      {/* Desktop sidebar toggle remains visible when the panel is collapsed */}
+      <button
+        onClick={() => toggleSidebar()}
+        aria-expanded={isSidebarOpen}
+        title={isSidebarOpen ? 'ซ่อนแถบโซนและสถานที่' : 'แสดงแถบโซนและสถานที่'}
+        className={`hidden lg:flex fixed top-20 z-40 items-center justify-center w-9 h-10 rounded-r-xl bg-zinc-950/95 text-zinc-200 border border-l-0 border-zinc-700 shadow-xl backdrop-blur-md hover:bg-zinc-800 transition-all duration-300 ${isSidebarOpen ? 'left-[calc(1rem+22rem)] sm:left-[calc(1.5rem+24rem)]' : 'left-0'}`}
+      >
+        {isSidebarOpen ? <ChevronLeft className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+      </button>
+
       {/* Mobile Backdrop */}
       {isSidebarOpen && (
         <div
@@ -55,7 +66,7 @@ export const Sidebar: React.FC = () => {
       {/* Main Sidebar Container */}
       <aside
         className={`fixed lg:absolute top-18 bottom-4 left-4 w-88 sm:w-96 rounded-2xl bg-zinc-950/90 border border-zinc-800/80 shadow-2xl backdrop-blur-xl z-30 flex flex-col overflow-hidden transition-all duration-300 ${
-          isSidebarOpen ? 'translate-x-0' : '-translate-x-[110%] lg:translate-x-0'
+          isSidebarOpen ? 'translate-x-0' : '-translate-x-[110%]'
         }`}
       >
         {/* Header / Tabs */}
@@ -79,7 +90,7 @@ export const Sidebar: React.FC = () => {
                   : 'text-zinc-400 hover:text-zinc-200'
               }`}
             >
-              สถานที่ ({places.length})
+              ร้านหมูกระทะ ({places.length})
             </button>
           </div>
 
@@ -163,6 +174,7 @@ export const Sidebar: React.FC = () => {
           {activeTab === 'zones' ? (
             // ZONES LIST
             zones
+              .filter(z => !hiddenZoneIds.includes(z.id))
               .filter(z => 
                 !searchQuery || 
                 z.name_th.toLowerCase().includes(searchQuery.toLowerCase()) || 
@@ -176,7 +188,6 @@ export const Sidebar: React.FC = () => {
                 return (
                   <div
                     key={zone.id}
-                    onClick={() => selectZone(isSelected ? null : zone.id)}
                     onMouseEnter={() => setHoveredZone(zone.id)}
                     onMouseLeave={() => setHoveredZone(null)}
                     className={`group p-2.5 rounded-xl cursor-pointer transition-all flex items-center justify-between ${
@@ -201,14 +212,29 @@ export const Sidebar: React.FC = () => {
                           <span className="px-1.5 py-0.2 rounded bg-zinc-800 text-zinc-400">
                             {zone.zone_type}
                           </span>
-                          <span>{stats.placesCount} สถานที่</span>
+                          <span>{stats.placesCount} ร้าน</span>
                           <span>•</span>
                           <span className="text-amber-400/90 font-medium">{stats.votesCount} โหวต</span>
                         </div>
                       </div>
                     </div>
 
-                    <ChevronRight className={`w-4 h-4 text-zinc-500 group-hover:text-zinc-200 transition ${isSelected ? 'rotate-90 text-amber-400' : ''}`} />
+                    <div className="flex items-center gap-1">
+                      <button
+                        onClick={() => selectZone(isSelected ? null : zone.id)}
+                        title="เลือกโซน"
+                        className="p-1.5 rounded-lg hover:bg-zinc-800"
+                      >
+                        <ChevronRight className={`w-4 h-4 text-zinc-500 group-hover:text-zinc-200 transition ${isSelected ? 'rotate-90 text-amber-400' : ''}`} />
+                      </button>
+                      <button
+                        onClick={() => toggleZoneVisibility(zone.id)}
+                        title="ซ่อนโซนนี้"
+                        className="p-1.5 rounded-lg text-zinc-500 hover:text-amber-300 hover:bg-zinc-800"
+                      >
+                        <EyeOff className="w-4 h-4" />
+                      </button>
+                    </div>
                   </div>
                 );
               })
@@ -256,6 +282,22 @@ export const Sidebar: React.FC = () => {
                 ไม่พบสถานที่ในหมวดหมู่หรือคำค้นหานี้
               </div>
             )
+          )}
+
+          {activeTab === 'zones' && hiddenZoneIds.length > 0 && (
+            <div className="mt-3 pt-3 border-t border-zinc-800">
+              <p className="px-2 text-[11px] text-zinc-500 mb-1">โซนที่ซ่อน ({hiddenZoneIds.length})</p>
+              {zones.filter(zone => hiddenZoneIds.includes(zone.id)).map(zone => (
+                <button
+                  key={zone.id}
+                  onClick={() => toggleZoneVisibility(zone.id)}
+                  className="w-full flex items-center justify-between px-2.5 py-2 rounded-lg text-xs text-zinc-400 hover:text-white hover:bg-zinc-900"
+                >
+                  <span>{zone.name_th}</span>
+                  <span className="flex items-center gap-1 text-[10px]"><Eye className="w-3.5 h-3.5" /> แสดง</span>
+                </button>
+              ))}
+            </div>
           )}
         </div>
 

@@ -17,6 +17,7 @@ export const App: React.FC = () => {
     isLoading, 
     places, 
     votes, 
+    loadError,
     currentView, 
     setCurrentView, 
     selectPlace 
@@ -59,17 +60,29 @@ export const App: React.FC = () => {
       {/* Top Navigation */}
       <Navbar />
 
+      {loadError && (
+        <div role="alert" className="fixed top-20 left-1/2 z-50 flex w-[min(92vw,36rem)] -translate-x-1/2 items-center justify-between gap-4 rounded-xl border border-rose-400/30 bg-zinc-950 px-4 py-3 text-xs text-rose-200 shadow-xl">
+          <div className="min-w-0">
+            <p className="m-0 font-semibold">โหลดข้อมูลโหวตไม่สำเร็จ</p>
+            <p className="mb-0 mt-1 break-words text-rose-200/75">{loadError}</p>
+          </div>
+          <button onClick={() => void init()} disabled={isLoading} className="shrink-0 rounded-lg bg-rose-400/15 px-3 py-1.5 font-semibold text-rose-100 hover:bg-rose-400/25 disabled:cursor-wait disabled:opacity-60">
+            {isLoading ? 'กำลังโหลด…' : 'ลองอีกครั้ง'}
+          </button>
+        </div>
+      )}
+
       {/* View Switching: Map View vs Live Results View */}
-      {currentView === 'map' ? (
-        <>
+      <>
+        <main className={`w-full h-full ${currentView === 'map' ? '' : 'hidden'}`}>
+          <MapContainer />
+        </main>
+        {currentView === 'map' ? (
+          <>
           {/* Left Sidebar (Zones & Place Explorer) */}
           <Sidebar />
 
           {/* Main 3D Interactive Map */}
-          <main className="w-full h-full">
-            <MapContainer />
-          </main>
-
           {/* Place Detail Drawer / Bottom Sheet */}
           <PlaceDetailPanel />
 
@@ -78,7 +91,7 @@ export const App: React.FC = () => {
             <div className="flex items-center gap-1.5">
               <span className={`w-2 h-2 rounded-full ${isSupabaseConfigured ? 'bg-emerald-400' : 'bg-amber-400'}`} />
               <span className="font-medium text-zinc-300">
-                {isSupabaseConfigured ? 'Supabase Connected' : 'Local Realtime Engine'}
+                {isSupabaseConfigured ? 'โหวตออนไลน์' : 'บันทึกโหวตในเบราว์เซอร์นี้'}
               </span>
             </div>
             <span className="text-zinc-600">|</span>
@@ -86,13 +99,14 @@ export const App: React.FC = () => {
             <span className="text-zinc-600">|</span>
             <span className="text-amber-400 font-semibold">{votes.length} คะแนนโหวต</span>
           </div>
-        </>
-      ) : (
+          </>
+        ) : (
         /* Full Dedicated Voting Results & Statistics Page */
         <main className="w-full h-full">
           <VotingResultsView />
         </main>
-      )}
+        )}
+      </>
 
       {/* Modals */}
       <LeaderboardModal />

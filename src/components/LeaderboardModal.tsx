@@ -20,7 +20,6 @@ export const LeaderboardModal: React.FC = () => {
     zones,
     activeSession,
     selectPlace,
-    votes
   } = useAppStore();
 
   const [zoneFilter, setZoneFilter] = useState<string>('all');
@@ -32,7 +31,7 @@ export const LeaderboardModal: React.FC = () => {
     ? allEntries
     : allEntries.filter(e => e.place.zone_id === zoneFilter);
 
-  const totalVotes = votes.length;
+  const totalVotes = allEntries.reduce((total, entry) => total + entry.votes_count, 0);
   const isSessionEnded = activeSession?.status === 'completed';
 
   // Check top rank status

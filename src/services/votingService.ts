@@ -1,6 +1,12 @@
 import { isSupabaseConfigured, supabase } from '../lib/supabase';
 import type { Place, Vote, VotingSession } from '../types';
-import { initialPlaces, initialSession } from '../data/initialData';
+import { initialPlaces, initialSession, mookataZoneIds } from '../data/initialData';
+
+const isMookataPlace = (place: Place) =>
+  mookataZoneIds.includes(place.zone_id) &&
+  (place.category?.includes('หมูกระทะ') ||
+    place.name.includes('หมูกระทะ') ||
+    place.name_en?.toLowerCase().includes('mookata'));
 
 // Storage keys for local atomic fallback
 const LOCAL_VOTES_KEY = 'cm_map_local_votes_v1';
@@ -9,6 +15,8 @@ const LOCAL_SESSION_KEY = 'cm_map_local_session_v1';
 
 // Cross-tab real-time sync channel
 let broadcastChannel: BroadcastChannel | null = null;
+let activeRealtimeCleanup: (() => void) | null = null;
+let activeBroadcastCleanup: (() => void) | null = null;
 if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
   broadcastChannel = new BroadcastChannel('chiangmai_voting_realtime_channel');
 }
@@ -18,7 +26,7 @@ export interface VoteResult {
   action: 'VOTE_CAST' | 'VOTE_CHANGED' | 'NO_CHANGE';
   session_id: string;
   place_id: string;
-  user_id: string;
+  user_id?: string;
   previous_place_id?: string;
   message?: string;
 }
@@ -27,19 +35,19 @@ export class VotingService {
   /**
    * Retrieves active voting session
    */
-  static async getActiveSession(): Promise<VotingSession> {
+  static async getActiveSession(): Promise<VotingSession | null> {
     if (isSupabaseConfigured && supabase) {
       const { data, error } = await supabase
         .from('voting_sessions')
         .select('*')
-        .eq('status', 'active')
+        .in('status', ['active', 'completed'])
         .order('created_at', { ascending: false })
         .limit(1)
-        .single();
+        .maybeSingle();
 
-      if (!error && data) {
-        return data as VotingSession;
-      }
+      if (!error && data) return data as VotingSession;
+      if (error) throw new Error(error.message);
+      return null;
     }
 
     // Local fallback
@@ -54,36 +62,101 @@ export class VotingService {
     return initialSession;
   }
 
+  static async getCurrentUserVote(sessionId: string, userId: string): Promise<string | null> {
+    if (isSupabaseConfigured && supabase) {
+      const { data, error } = await supabase.functions.invoke('current-vote', {
+        body: { session_id: sessionId },
+      });
+      if (error) throw new Error(error.message);
+      if (data?.error) throw new Error(data.error);
+      return data?.place_id ?? null;
+    }
+
+    const votes = await this.getVotes(sessionId);
+    return votes.find(vote => vote.user_id === userId)?.place_id ?? null;
+  }
+
+  static async manageVotingSession(
+    adminKey: string,
+    sessionId: string,
+    action: 'set_end_time' | 'close_now' | 'reopen',
+    endsAt?: string
+  ): Promise<VotingSession> {
+    if (!isSupabaseConfigured || !supabase) {
+      throw new Error('การตั้งค่าเวลาปิดและจำกัด IP ต้องเชื่อมต่อ Supabase');
+    }
+
+    const { data, error } = await supabase.functions.invoke('manage-voting', {
+      body: { session_id: sessionId, action, ends_at: endsAt },
+      headers: { 'x-admin-key': adminKey },
+    });
+    if (error) {
+      let message = error.message;
+      const response = error.context;
+      if (response instanceof Response) {
+        try {
+          const payload = await response.clone().json();
+          if (typeof payload?.error === 'string') message = payload.error;
+        } catch {
+          // Retain the Supabase error message when its response is not JSON.
+        }
+      }
+      throw new Error(message);
+    }
+    if (data?.error) throw new Error(data.error);
+    return data.session as VotingSession;
+  }
+
   /**
    * Retrieves all places
    */
-  static async getPlaces(): Promise<Place[]> {
+  static async getPlaces(sessionId?: string): Promise<Place[]> {
     if (isSupabaseConfigured && supabase) {
+      if (sessionId) {
+        const { data: candidates, error: candidateError } = await supabase
+          .from('voting_session_places')
+          .select('place_id')
+          .eq('session_id', sessionId);
+        if (candidateError) throw new Error(candidateError.message);
+        const candidateIds = (candidates || []).map(candidate => candidate.place_id);
+        if (candidateIds.length === 0) return [];
+
+        const { data, error } = await supabase
+          .from('places')
+          .select('*')
+          .in('id', candidateIds)
+          .order('name', { ascending: true });
+        if (error) throw new Error(error.message);
+        return ((data || []) as Place[]).filter(isMookataPlace);
+      }
+
       const { data, error } = await supabase
         .from('places')
         .select('*')
         .order('name', { ascending: true });
 
-      if (!error && data && data.length > 0) {
-        return data as Place[];
-      }
+      if (error) throw new Error(error.message);
+      return ((data || []) as Place[]).filter(isMookataPlace);
     }
 
     const saved = localStorage.getItem(LOCAL_PLACES_KEY);
     if (saved) {
       try {
-        return JSON.parse(saved);
+        const places = new Map(initialPlaces.map(place => [place.id, place]));
+        (JSON.parse(saved) as Place[]).filter(isMookataPlace).forEach(place => places.set(place.id, place));
+        return [...places.values()].filter(isMookataPlace);
       } catch (e) {
         // fallback
       }
     }
-    return initialPlaces;
+    return initialPlaces.filter(isMookataPlace);
   }
 
   /**
    * Retrieves all votes for session
    */
   static async getVotes(sessionId: string): Promise<Vote[]> {
+    const candidateIds = new Set((await this.getPlaces(sessionId)).map(place => place.id));
     if (isSupabaseConfigured && supabase) {
       const { data, error } = await supabase
         .from('votes')
@@ -91,32 +164,27 @@ export class VotingService {
         .eq('session_id', sessionId);
 
       if (!error && data) {
-        return data as Vote[];
+        return (data as Vote[]).filter(vote => candidateIds.has(vote.place_id));
       }
+      if (error) throw new Error(error.message);
     }
 
     const saved = localStorage.getItem(LOCAL_VOTES_KEY);
     if (saved) {
       try {
         const allVotes: Vote[] = JSON.parse(saved);
-        return allVotes.filter(v => v.session_id === sessionId);
+        const sampleVoteIds = new Set(['v1', 'v2', 'v3', 'v4', 'v5', 'v6', 'v7']);
+        const realVotes = allVotes.filter(v => !sampleVoteIds.has(v.id));
+        if (realVotes.length !== allVotes.length) {
+          localStorage.setItem(LOCAL_VOTES_KEY, JSON.stringify(realVotes));
+        }
+        return realVotes.filter(v => v.session_id === sessionId && candidateIds.has(v.place_id));
       } catch (e) {
         return [];
       }
     }
 
-    // Provide default initial votes to show real leaderboard immediately
-    const defaultVotes: Vote[] = [
-      { id: 'v1', session_id: sessionId, place_id: 'place-cool-cool-mookata', user_id: 'sample_usr_1', created_at: new Date().toISOString(), updated_at: new Date().toISOString() },
-      { id: 'v2', session_id: sessionId, place_id: 'place-cool-cool-mookata', user_id: 'sample_usr_2', created_at: new Date().toISOString(), updated_at: new Date().toISOString() },
-      { id: 'v3', session_id: sessionId, place_id: 'place-cool-cool-mookata', user_id: 'sample_usr_3', created_at: new Date().toISOString(), updated_at: new Date().toISOString() },
-      { id: 'v4', session_id: sessionId, place_id: 'place-hiso-mookata', user_id: 'sample_usr_4', created_at: new Date().toISOString(), updated_at: new Date().toISOString() },
-      { id: 'v5', session_id: sessionId, place_id: 'place-hiso-mookata', user_id: 'sample_usr_5', created_at: new Date().toISOString(), updated_at: new Date().toISOString() },
-      { id: 'v6', session_id: sessionId, place_id: 'place-one-nimman', user_id: 'sample_usr_6', created_at: new Date().toISOString(), updated_at: new Date().toISOString() },
-      { id: 'v7', session_id: sessionId, place_id: 'place-wat-phra-singh', user_id: 'sample_usr_7', created_at: new Date().toISOString(), updated_at: new Date().toISOString() },
-    ];
-    localStorage.setItem(LOCAL_VOTES_KEY, JSON.stringify(defaultVotes));
-    return defaultVotes;
+    return [];
   }
 
   /**
@@ -129,19 +197,29 @@ export class VotingService {
   ): Promise<VoteResult> {
     // 1. Supabase Cloud Execution
     if (isSupabaseConfigured && supabase) {
-      const { data, error } = await supabase.rpc('cast_or_change_vote', {
-        p_session_id: sessionId,
-        p_place_id: placeId,
-        p_user_id: userId
+      const { data, error } = await supabase.functions.invoke('cast-vote', {
+        body: { session_id: sessionId, place_id: placeId },
       });
 
       if (error) {
         throw new Error(error.message);
       }
+      if (data?.error) throw new Error(data.error);
       return data as VoteResult;
     }
 
     // 2. Standalone Atomic Local Store
+    const session = await this.getActiveSession();
+    const now = Date.now();
+    if (!session || session.id !== sessionId || session.status !== 'active' ||
+      now < Date.parse(session.starts_at) || now > Date.parse(session.ends_at)) {
+      throw new Error('Voting session is not active');
+    }
+    const candidates = await this.getPlaces(sessionId);
+    if (!candidates.some(place => place.id === placeId)) {
+      throw new Error('Place is not a registered candidate for this voting session');
+    }
+
     const saved = localStorage.getItem(LOCAL_VOTES_KEY);
     let votes: Vote[] = saved ? JSON.parse(saved) : [];
 
@@ -209,8 +287,19 @@ export class VotingService {
       created_at: new Date().toISOString()
     };
 
+    if (!isMookataPlace(place)) {
+      throw new Error('เพิ่มได้เฉพาะร้านหมูกระทะในโซนเจ็ดยอด คูเมือง และช้างคลาน');
+    }
+
     if (isSupabaseConfigured && supabase) {
-      await supabase.from('places').insert(place);
+      const session = await this.getActiveSession();
+      if (!session) throw new Error('ยังไม่มีรอบโหวตที่เปิดใช้งาน');
+      const { error } = await supabase.from('places').insert(place);
+      if (error) throw new Error(error.message);
+      const { error: candidateError } = await supabase
+        .from('voting_session_places')
+        .insert({ session_id: session.id, place_id: place.id });
+      if (candidateError) throw new Error(candidateError.message);
     } else {
       const places = await this.getPlaces();
       places.push(place);
@@ -230,34 +319,50 @@ export class VotingService {
     const cleanups: (() => void)[] = [];
 
     // 1. Supabase Realtime
-    if (isSupabaseConfigured && supabase) {
-      const channel = supabase
-        .channel('realtime_votes_and_places')
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'votes' }, payload => {
-          onUpdate({ type: 'VOTE_UPDATE', payload });
-        })
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'places' }, payload => {
-          onUpdate({ type: 'PLACES_UPDATE', payload });
-        })
-        .subscribe();
+    const client = supabase;
+    if (isSupabaseConfigured && client) {
+      if (!activeRealtimeCleanup) {
+        // Use a fresh topic after hot reload so Supabase never returns an already-subscribed channel.
+        client.getChannels()
+          .filter(channel => channel.topic.startsWith('realtime:realtime_votes_and_places'))
+          .forEach(channel => { void client.removeChannel(channel); });
 
-      cleanups.push(() => {
-        if (supabase) {
-          supabase.removeChannel(channel);
-        }
-      });
+        const channel = client
+          .channel(`realtime_votes_and_places_${crypto.randomUUID()}`)
+          .on('postgres_changes', { event: '*', schema: 'public', table: 'votes' }, payload => {
+            onUpdate({ type: 'VOTE_UPDATE', payload });
+          })
+          .on('postgres_changes', { event: '*', schema: 'public', table: 'places' }, payload => {
+            onUpdate({ type: 'PLACES_UPDATE', payload });
+          })
+          .on('postgres_changes', { event: '*', schema: 'public', table: 'voting_session_places' }, payload => {
+            onUpdate({ type: 'PLACES_UPDATE', payload });
+          })
+          .on('postgres_changes', { event: '*', schema: 'public', table: 'voting_sessions' }, payload => {
+            onUpdate({ type: 'SESSION_UPDATE', payload });
+          })
+          .subscribe();
+
+        activeRealtimeCleanup = () => {
+          void client.removeChannel(channel);
+          activeRealtimeCleanup = null;
+        };
+      }
+      cleanups.push(() => activeRealtimeCleanup?.());
     }
 
     // 2. BroadcastChannel (for multi-tab real-time in demo mode)
-    if (broadcastChannel) {
+    if (broadcastChannel && !activeBroadcastCleanup) {
       const handler = (event: MessageEvent) => {
         onUpdate(event.data);
       };
       broadcastChannel.addEventListener('message', handler);
-      cleanups.push(() => {
+      activeBroadcastCleanup = () => {
         broadcastChannel?.removeEventListener('message', handler);
-      });
+        activeBroadcastCleanup = null;
+      };
     }
+    if (broadcastChannel) cleanups.push(() => activeBroadcastCleanup?.());
 
     return () => {
       cleanups.forEach(c => c());

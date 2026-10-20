@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useAppStore } from '../store/useAppStore';
 import { 
   X, 
@@ -26,13 +26,20 @@ export const PlaceDetailPanel: React.FC = () => {
     castVote,
     getUserVotedPlaceId,
     getLeaderboard,
-    toggleQrModal
+    toggleQrModal,
+    activeSession
   } = useAppStore();
 
   const [copiedLink, setCopiedLink] = useState(false);
   const [copiedCoords, setCopiedCoords] = useState(false);
   const [isVoting, setIsVoting] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [now, setNow] = useState(Date.now());
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, []);
 
   if (!selectedPlaceId) return null;
 
@@ -43,6 +50,8 @@ export const PlaceDetailPanel: React.FC = () => {
   const userVotedPlaceId = getUserVotedPlaceId();
   const isVotedByMe = userVotedPlaceId === place.id;
   const hasVotedOther = userVotedPlaceId && userVotedPlaceId !== place.id;
+  const isVotingOpen = Boolean(activeSession && activeSession.status === 'active' &&
+    now >= Date.parse(activeSession.starts_at) && now <= Date.parse(activeSession.ends_at));
 
   const leaderboard = getLeaderboard();
   const placeEntry = leaderboard.find(e => e.place.id === place.id);
@@ -197,7 +206,11 @@ export const PlaceDetailPanel: React.FC = () => {
             </div>
 
             {/* Vote Action Button */}
-            {isVotedByMe ? (
+            {!isVotingOpen ? (
+              <div className="w-full py-2.5 px-3 rounded-xl bg-zinc-800 text-zinc-400 border border-zinc-700 text-center text-xs font-semibold">
+                รอบโหวตยังไม่เปิดหรือปิดแล้ว
+              </div>
+            ) : isVotedByMe ? (
               <div className="w-full py-2.5 px-3 rounded-xl bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 text-center text-xs font-bold flex items-center justify-center gap-2">
                 <Check className="w-4 h-4 text-emerald-400" />
                 คุณได้โหวตให้สถานที่นี้แล้ว

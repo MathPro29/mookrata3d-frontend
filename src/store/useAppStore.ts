@@ -1,15 +1,28 @@
 import { create } from 'zustand';
 import type { LeaderboardEntry, Place, Vote, VotingSession, Zone } from '../types';
-import { initialZones } from '../data/initialData';
+import { initialZones, mookataZoneIds } from '../data/initialData';
 import { VotingService } from '../services/votingService';
 import { getOrCreateUserId } from '../services/identityService';
+
+const HIDDEN_ZONE_IDS_KEY = 'cm_map_hidden_zones_v1';
+let unsubscribeFromUpdates: (() => void) | null = null;
+const initialHiddenZoneIds: string[] = (() => {
+  try {
+    return (JSON.parse(localStorage.getItem(HIDDEN_ZONE_IDS_KEY) || '[]') as string[])
+      .filter(zoneId => mookataZoneIds.includes(zoneId));
+  } catch {
+    return [];
+  }
+})();
 
 interface AppState {
   // State
   zones: Zone[];
+  hiddenZoneIds: string[];
   places: Place[];
   votes: Vote[];
   activeSession: VotingSession | null;
+  myVotePlaceId: string | null;
   userId: string;
   selectedZoneId: string | null;
   hoveredZoneId: string | null;
@@ -22,6 +35,7 @@ interface AppState {
   searchQuery: string;
   selectedCategory: string;
   isLoading: boolean;
+  loadError: string | null;
   mapInstance: any | null;
   currentView: 'map' | 'results';
   isQrModalOpen: boolean;
@@ -29,10 +43,12 @@ interface AppState {
 
   // Actions
   init: () => Promise<void>;
+  setVotingSession: (session: VotingSession) => void;
   setCurrentView: (view: 'map' | 'results') => void;
   toggleQrModal: (open?: boolean, placeId?: string | null) => void;
   setMapInstance: (map: any) => void;
   selectZone: (zoneId: string | null, shouldFly?: boolean) => void;
+  toggleZoneVisibility: (zoneId: string) => void;
   setHoveredZone: (zoneId: string | null) => void;
   selectPlace: (placeId: string | null, shouldFly?: boolean) => void;
   toggle3D: () => void;
@@ -55,9 +71,11 @@ interface AppState {
 
 export const useAppStore = create<AppState>((set, get) => ({
   zones: initialZones,
+  hiddenZoneIds: initialHiddenZoneIds,
   places: [],
   votes: [],
   activeSession: null,
+  myVotePlaceId: null,
   userId: getOrCreateUserId(),
   selectedZoneId: null,
   hoveredZoneId: null,
@@ -70,6 +88,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   searchQuery: '',
   selectedCategory: 'all',
   isLoading: true,
+  loadError: null,
   mapInstance: null,
   currentView: 'map',
   isQrModalOpen: false,
@@ -77,37 +96,60 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   init: async () => {
     try {
-      set({ isLoading: true });
-      const [session, places] = await Promise.all([
-        VotingService.getActiveSession(),
-        VotingService.getPlaces()
-      ]);
-      const votes = await VotingService.getVotes(session.id);
+      set({ isLoading: true, loadError: null });
+      const session = await VotingService.getActiveSession();
+      const sessionPlaces = await VotingService.getPlaces(session?.id);
+      const votes = session ? await VotingService.getVotes(session.id) : [];
+      let myVotePlaceId: string | null = null;
+      if (session) {
+        try {
+          myVotePlaceId = await VotingService.getCurrentUserVote(session.id, get().userId);
+        } catch (error) {
+          // A missing/unavailable Edge Function should not prevent the map and
+          // leaderboard from loading. The vote can still be cast by the server.
+          console.warn('Could not load this device vote status:', error);
+        }
+      }
 
       set({
         activeSession: session,
-        places,
+        places: sessionPlaces,
         votes,
+        myVotePlaceId,
         isLoading: false
       });
 
       // Subscribe to real-time events
-      VotingService.subscribeToUpdates(async () => {
-        const currentSession = get().activeSession;
-        if (!currentSession) return;
+      unsubscribeFromUpdates ??= VotingService.subscribeToUpdates(async () => {
+        const session = await VotingService.getActiveSession();
+        const sessionId = session?.id;
+        if (!sessionId) {
+          set({ activeSession: null, places: [], votes: [], myVotePlaceId: null });
+          return;
+        }
         const [updatedPlaces, updatedVotes] = await Promise.all([
-          VotingService.getPlaces(),
-          VotingService.getVotes(currentSession.id)
+          VotingService.getPlaces(sessionId),
+          VotingService.getVotes(sessionId)
         ]);
-        set({ places: updatedPlaces, votes: updatedVotes });
+        let myVotePlaceId: string | null = null;
+        try {
+          myVotePlaceId = await VotingService.getCurrentUserVote(sessionId, get().userId);
+        } catch (error) {
+          console.warn('Could not refresh this device vote status:', error);
+        }
+        set({ activeSession: session, places: updatedPlaces, votes: updatedVotes, myVotePlaceId });
       });
     } catch (err) {
       console.error('Initialization error:', err);
-      set({ isLoading: false });
+      set({
+        isLoading: false,
+        loadError: err instanceof Error ? err.message : 'โหลดข้อมูลไม่สำเร็จ'
+      });
     }
   },
 
   setCurrentView: (view) => set({ currentView: view }),
+  setVotingSession: (session) => set({ activeSession: session }),
   toggleQrModal: (open, placeId = null) => {
     set((state) => ({
       isQrModalOpen: open !== undefined ? open : !state.isQrModalOpen,
@@ -164,6 +206,20 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   setHoveredZone: (zoneId) => set({ hoveredZoneId: zoneId }),
+
+  toggleZoneVisibility: (zoneId) => {
+    const hiddenZoneIds = get().hiddenZoneIds.includes(zoneId)
+      ? get().hiddenZoneIds.filter(id => id !== zoneId)
+      : [...get().hiddenZoneIds, zoneId];
+    localStorage.setItem(HIDDEN_ZONE_IDS_KEY, JSON.stringify(hiddenZoneIds));
+    set({
+      hiddenZoneIds,
+      ...(get().selectedZoneId === zoneId ? { selectedZoneId: null } : {}),
+      ...(get().places.some(place => place.id === get().selectedPlaceId && place.zone_id === zoneId)
+        ? { selectedPlaceId: null }
+        : {})
+    });
+  },
 
   selectPlace: (placeId, shouldFly = true) => {
     set({ selectedPlaceId: placeId });
@@ -252,7 +308,7 @@ export const useAppStore = create<AppState>((set, get) => ({
 
       // Refresh votes
       const votes = await VotingService.getVotes(activeSession.id);
-      set({ votes });
+      set({ votes, myVotePlaceId: placeId });
 
       return { success: true, action: result.action };
     } catch (err: any) {
@@ -284,20 +340,26 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   // COMPUTED
   getLeaderboard: () => {
-    const { places, zones, votes, activeSession } = get();
+    const { places, zones, votes, activeSession, hiddenZoneIds } = get();
     if (!activeSession) return [];
 
-    const voteCountMap = new Map<string, number>();
-    places.forEach(p => voteCountMap.set(p.id, 0));
+    const visiblePlaces = places.filter(place => !hiddenZoneIds.includes(place.zone_id));
+    const visiblePlaceIds = new Set(visiblePlaces.map(place => place.id));
+    const visibleVotes = votes.filter(vote =>
+      vote.session_id === activeSession.id && visiblePlaceIds.has(vote.place_id)
+    );
 
-    votes.forEach(v => {
+    const voteCountMap = new Map<string, number>();
+    visiblePlaces.forEach(p => voteCountMap.set(p.id, 0));
+
+    visibleVotes.forEach(v => {
       const current = voteCountMap.get(v.place_id) || 0;
       voteCountMap.set(v.place_id, current + 1);
     });
 
-    const totalVotes = votes.length;
+    const totalVotes = visibleVotes.length;
 
-    const entries = places.map(p => {
+    const entries = visiblePlaces.map(p => {
       const count = voteCountMap.get(p.id) || 0;
       const zone = zones.find(z => z.id === p.zone_id);
       const percentage = totalVotes > 0 ? Math.round((count / totalVotes) * 100) : 0;
@@ -340,17 +402,15 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   getUserVotedPlaceId: () => {
-    const { votes, userId, activeSession } = get();
-    if (!activeSession) return null;
-    const userVote = votes.find(
-      v => v.session_id === activeSession.id && v.user_id === userId
-    );
-    return userVote ? userVote.place_id : null;
+    return get().myVotePlaceId;
   },
 
   getFilteredPlaces: () => {
-    const { places, selectedZoneId, searchQuery, selectedCategory } = get();
+    const { places, selectedZoneId, searchQuery, selectedCategory, hiddenZoneIds } = get();
     return places.filter(place => {
+      if (hiddenZoneIds.includes(place.zone_id)) {
+        return false;
+      }
       // Zone match
       if (selectedZoneId && place.zone_id !== selectedZoneId) {
         return false;

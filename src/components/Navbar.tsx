@@ -13,6 +13,7 @@ import {
 export const Navbar: React.FC = () => {
   const {
     zones,
+    hiddenZoneIds,
     selectedZoneId,
     selectZone,
     is3D,
@@ -26,7 +27,7 @@ export const Navbar: React.FC = () => {
   } = useAppStore();
 
   return (
-    <header className="absolute top-0 left-0 right-0 h-16 z-30 px-3 sm:px-6 flex items-center justify-between pointer-events-none">
+    <header className="absolute top-0 left-0 right-0 h-16 z-30 px-3 sm:px-6 grid grid-cols-[1fr_auto_1fr] items-center pointer-events-none">
       {/* Left: Brand & Mobile Menu Toggle */}
       <div className="flex items-center gap-3 pointer-events-auto">
         {/* Mobile Sidebar Toggle (Only in Map View) */}
@@ -50,20 +51,20 @@ export const Navbar: React.FC = () => {
           </div>
           <div>
             <div className="flex items-center gap-1.5 leading-none">
-              <span className="text-xs font-extrabold tracking-tight text-white">Chiang Mai 3D</span>
+              <span className="text-xs font-extrabold tracking-tight text-white">Chiang Mai Mookata</span>
               <span className="text-[9px] font-semibold tracking-wider px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-400 border border-zinc-700/60">
-                Poll & Map
+                ร้านหมูกระทะ
               </span>
             </div>
             <p className="text-[10px] text-zinc-400 hidden sm:block m-0 mt-0.5">
-              แผนที่สามมิติและระบบโหวตสถานที่
+              แผนที่ร้านหมูกระทะและระบบโหวต
             </p>
           </div>
         </div>
       </div>
 
       {/* Center: View Switcher (Map vs Results) */}
-      <div className="flex items-center gap-1 p-1 rounded-xl bg-zinc-950/90 border border-zinc-800 shadow-xl backdrop-blur-md pointer-events-auto">
+      <div className="justify-self-center flex items-center gap-1 p-1 rounded-xl bg-zinc-950/90 border border-zinc-800 shadow-xl backdrop-blur-md pointer-events-auto">
         <button
           onClick={() => setCurrentView('map')}
           className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition ${
@@ -95,7 +96,7 @@ export const Navbar: React.FC = () => {
       </div>
 
       {/* Right Controls */}
-      <div className="flex items-center gap-2 pointer-events-auto">
+      <div className="justify-self-end flex items-center gap-2 pointer-events-auto">
         {/* QR Code Trigger Button */}
         <button
           onClick={() => toggleQrModal(true)}
@@ -114,8 +115,8 @@ export const Navbar: React.FC = () => {
               onChange={(e) => selectZone(e.target.value === 'all' ? null : e.target.value)}
               className="appearance-none bg-zinc-950/90 hover:bg-zinc-900 text-zinc-200 text-xs font-medium pl-3 pr-7 py-1.5 rounded-xl border border-zinc-800 shadow-lg backdrop-blur-md cursor-pointer transition focus:outline-none"
             >
-              <option value="all">เลือกโซน (16 โซน)</option>
-              {zones.map(z => (
+              <option value="all">เลือกโซน ({zones.length - hiddenZoneIds.length} โซน)</option>
+              {zones.filter(z => !hiddenZoneIds.includes(z.id)).map(z => (
                 <option key={z.id} value={z.id}>
                   {z.name_th} ({z.name_en})
                 </option>
