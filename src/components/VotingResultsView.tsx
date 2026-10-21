@@ -1,27 +1,15 @@
 import React, { useEffect, useState } from 'react';
+import { Clock3, Compass, MapPin, Search, Settings2 } from 'lucide-react';
 import { useAppStore } from '../store/useAppStore';
-import { CheckCircle2, Navigation, Search, Compass, Clock3 } from 'lucide-react';
-import { isSupabaseConfigured } from '../lib/supabase';
 import { VotingSessionControls } from './VotingSessionControls';
 
 export const VotingResultsView: React.FC = () => {
-  const {
-    getLeaderboard,
-    activeSession,
-    zones,
-    hiddenZoneIds,
-    places,
-    selectPlace,
-    selectZone,
-    setCurrentView,
-    castVote,
-    getUserVotedPlaceId,
-  } = useAppStore();
-
+  const { getLeaderboard, getUserVotedPlaceId, activeSession, zones, hiddenZoneIds, places, selectPlace, selectZone, setCurrentView, castVote, removeVote } = useAppStore();
+  const [selectedPlaceId, setSelectedPlaceId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedZone, setSelectedZone] = useState('all');
-  const [votingPlaceId, setVotingPlaceId] = useState<string | null>(null);
-  const [voteMessage, setVoteMessage] = useState('');
+  const [isVoting, setIsVoting] = useState(false);
+  const [message, setMessage] = useState('');
   const [isSessionControlsOpen, setIsSessionControlsOpen] = useState(false);
   const [now, setNow] = useState(Date.now());
 
@@ -30,42 +18,47 @@ export const VotingResultsView: React.FC = () => {
     return () => window.clearInterval(timer);
   }, []);
 
-  const leaderboard = getLeaderboard();
-  const userVotedPlaceId = getUserVotedPlaceId();
-  const totalVotes = leaderboard.reduce((total, entry) => total + entry.votes_count, 0);
-  const isSessionActive = Boolean(activeSession &&
-    activeSession.status === 'active' &&
-    now >= Date.parse(activeSession.starts_at) &&
-    now <= Date.parse(activeSession.ends_at));
-  const startsAt = activeSession ? Date.parse(activeSession.starts_at) : NaN;
-  const endsAt = activeSession ? Date.parse(activeSession.ends_at) : NaN;
-  const countdownLabel = activeSession?.status === 'completed' || (Number.isFinite(endsAt) && endsAt <= now)
-    ? 'ปิดโหวตแล้ว'
-    : activeSession?.status === 'active' && Number.isFinite(startsAt) && startsAt > now
-      ? `เริ่มใน ${Math.ceil((startsAt - now) / 60_000)} นาที`
-      : isSessionActive && Number.isFinite(endsAt)
-        ? `เหลือ ${Math.ceil((endsAt - now) / 60_000)} นาที`
-        : null;
+  useEffect(() => {
+    const target = new URLSearchParams(window.location.search).get('place');
+    if (target && places.some(place => place.id === target)) setSelectedPlaceId(target);
+  }, [places]);
 
-  const handleVote = async (placeId: string) => {
-    setVotingPlaceId(placeId);
-    setVoteMessage('');
-    const result = await castVote(placeId);
-    setVoteMessage(result.success
-      ? result.action === 'NO_CHANGE' ? 'คุณโหวตร้านนี้ไว้แล้ว' : result.action === 'VOTE_CHANGED' ? 'เปลี่ยนคะแนนโหวตแล้ว' : 'บันทึกคะแนนโหวตแล้ว'
-      : result.action === 'NO_SESSION' ? 'ขณะนี้ยังไม่มีรอบโหวตที่เปิดอยู่' : result.message || 'บันทึกคะแนนไม่สำเร็จ กรุณาลองอีกครั้ง');
-    setVotingPlaceId(null);
+  const leaderboard = getLeaderboard();
+  const myVotePlaceId = getUserVotedPlaceId();
+  const selectedPlace = places.find(place => place.id === selectedPlaceId);
+  const totalVotes = leaderboard.reduce((sum, entry) => sum + entry.votes_count, 0);
+  const isSessionActive = Boolean(activeSession && activeSession.status === 'active' && now >= Date.parse(activeSession.starts_at) && now <= Date.parse(activeSession.ends_at));
+  const filteredEntries = leaderboard.filter(entry =>
+    (selectedZone === 'all' || entry.place.zone_id === selectedZone) &&
+    (!searchQuery.trim() || `${entry.place.name} ${entry.place.name_en ?? ''}`.toLowerCase().includes(searchQuery.trim().toLowerCase()))
+  );
+  const topThree = leaderboard.slice(0, 3);
+
+  const handleVote = async () => {
+    if (!selectedPlaceId || !isSessionActive || isVoting) return;
+    setIsVoting(true);
+    setMessage('');
+    try {
+      const result = await castVote(selectedPlaceId);
+      setMessage(result.success
+        ? result.action === 'NO_CHANGE' ? 'คุณโหวตร้านนี้ไว้แล้ว' : 'บันทึกคะแนนโหวตแล้ว'
+        : result.message || 'บันทึกคะแนนไม่สำเร็จ กรุณาลองอีกครั้ง');
+    } finally {
+      setIsVoting(false);
+    }
   };
 
-  const filteredEntries = leaderboard.filter(e => {
-    if (selectedZone !== 'all' && e.place.zone_id !== selectedZone) return false;
-    if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase();
-      return e.place.name.toLowerCase().includes(q) || (e.place.name_en?.toLowerCase().includes(q) ?? false);
+  const handleRemoveVote = async (placeId: string) => {
+    if (!isSessionActive || isVoting || myVotePlaceId !== placeId) return;
+    setIsVoting(true);
+    setMessage('');
+    try {
+      const result = await removeVote(placeId);
+      setMessage(result.success ? 'ถอนโหวตแล้ว' : result.message || 'ถอนโหวตไม่สำเร็จ กรุณาลองอีกครั้ง');
+    } finally {
+      setIsVoting(false);
     }
-    return true;
-  });
-
+  };
 
   const handleInspectOnMap = (placeId: string) => {
     selectZone(null, false);
@@ -74,148 +67,71 @@ export const VotingResultsView: React.FC = () => {
   };
 
   return (
-    <div className="w-full h-full overflow-y-auto bg-zinc-950 text-zinc-100 pt-20 pb-16 px-4 sm:px-8 max-w-7xl mx-auto">
-      
-      {/* Page Header */}
-      <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 pb-6 border-b border-zinc-800/80">
-        <div>
-          <div className="flex items-center gap-2 mb-1.5">
-            <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-amber-500/10 text-amber-300 border border-amber-500/20">
-              <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
-              {isSessionActive ? 'ผลโหวตแบบเรียลไทม์' : activeSession ? 'การโหวตยังไม่เปิดหรือสิ้นสุดแล้ว' : 'ยังไม่มีรอบโหวต'}
-            </span>
-            {countdownLabel && (
-              <span role="timer" aria-live="off" className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-semibold ${isSessionActive ? 'bg-emerald-500/10 text-emerald-300 border border-emerald-500/20' : 'bg-zinc-800 text-zinc-300 border border-zinc-700'}`}>
-                <Clock3 className="h-3 w-3" />
-                {countdownLabel}
-              </span>
-            )}
-            <span className="text-zinc-500 text-xs">•</span>
-            <span className="text-zinc-400 text-xs">ร้านหมูกระทะ · เจ็ดยอด · คูเมือง · ช้างคลาน</span>
+    <div className="h-full overflow-y-auto bg-[#f7f7f5] text-zinc-950">
+      <div className="mx-auto max-w-6xl px-4 pb-40 pt-[calc(12rem+env(safe-area-inset-top))] sm:px-6 sm:pt-36 lg:px-8">
+        <div className="flex flex-col gap-5 border-b border-zinc-300 pb-6 md:flex-row md:items-end md:justify-between">
+          <div>
+            <div className="mb-3 flex flex-wrap items-center gap-2 text-xs font-semibold">
+              <span className="rounded-full bg-white px-3 py-1.5 text-zinc-700 ring-1 ring-zinc-300">{isSessionActive ? 'เปิดโหวตอยู่' : 'ปิดโหวต'}</span>
+              {activeSession && <span className="flex items-center gap-1 text-zinc-600"><Clock3 className="h-3.5 w-3.5" />{isSessionActive ? `ถึง ${new Date(activeSession.ends_at).toLocaleString('th-TH', { dateStyle: 'medium', timeStyle: 'short', timeZone: 'Asia/Bangkok' })}` : 'คะแนนรอบนี้ถูกล้างแล้ว'}</span>}
+            </div>
+            <h1 className="m-0 text-3xl font-black tracking-tight sm:text-4xl">ผลโหวตร้านหมูกระทะ</h1>
+            <p className="mb-0 mt-2 max-w-2xl text-sm leading-relaxed text-zinc-600">ดูอันดับร้านที่คนเลือก แล้วเลือกร้านที่คุณอยากไปได้หนึ่งร้าน เปลี่ยนใจได้ระหว่างเปิดโหวต</p>
           </div>
-          <h1 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight m-0">
-            {activeSession?.title || 'ผลโหวตร้านหมูกระทะเชียงใหม่'}
-          </h1>
-          <p className="text-xs sm:text-sm text-zinc-400 mt-1 m-0">
-            เลือกร้านที่อยากไปได้ 1 ร้านต่อรอบ และเปลี่ยนคะแนนได้ตลอดช่วงโหวต
-          </p>
+          <div className="flex items-end justify-between gap-5 md:justify-end">
+            <div className="text-right"><div className="text-xs text-zinc-600">คะแนนทั้งหมด</div><div className="text-3xl font-black tabular-nums">{totalVotes.toLocaleString('th-TH')}</div></div>
+            <button onClick={() => setIsSessionControlsOpen(true)} aria-label="ตั้งค่าโหวต" className="flex h-11 w-11 items-center justify-center rounded-xl border border-zinc-300 bg-white text-zinc-700 hover:border-zinc-500"><Settings2 className="h-5 w-5" /></button>
+          </div>
         </div>
 
-        <div className="flex flex-wrap gap-2">
-          <button
-            onClick={() => setIsSessionControlsOpen(true)}
-            className="flex items-center gap-1.5 rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2 text-xs font-semibold text-zinc-200 transition hover:bg-zinc-800"
-          >
-            <Clock3 className="h-4 w-4 text-amber-300" />
-            <span>ตั้งค่าโหวต</span>
-          </button>
-          <button
-            onClick={() => setCurrentView('map')}
-            className="flex items-center gap-1.5 rounded-xl bg-amber-500 px-4 py-2 text-xs font-bold text-zinc-950 shadow-md transition hover:bg-amber-400 active:scale-95"
-          >
-            <Compass className="h-4 w-4 text-zinc-950" />
-            <span>กลับไปแผนที่ 3D</span>
-          </button>
-        </div>
+        {!isSessionActive && <p role="status" className="mt-5 rounded-xl border border-zinc-300 bg-white px-4 py-3 text-sm text-zinc-700">{activeSession ? 'รอบโหวตสิ้นสุดแล้ว คะแนนถูกล้างก่อนเริ่มรอบใหม่ ดูร้านที่ชนะได้จากตัวนับเวลาด้านบน' : 'ยังไม่มีรอบโหวตที่เปิดอยู่'}</p>}
+        {message && <p role="status" aria-live="polite" className="mt-5 rounded-xl border border-zinc-300 bg-white px-4 py-3 text-sm font-semibold text-zinc-900">{message}</p>}
+
+        <section className="mt-9" aria-labelledby="top-three-title">
+          <div className="mb-4 flex items-end justify-between gap-3"><h2 id="top-three-title" className="m-0 text-xl font-black sm:text-2xl">อันดับ 1 · 2 · 3</h2><span className="text-xs text-zinc-500">เรียงตามคะแนนโหวต</span></div>
+          <div className="grid gap-3 md:grid-cols-3">
+            {topThree.map((entry, index) => {
+              const selected = selectedPlaceId === entry.place.id;
+              const voted = myVotePlaceId === entry.place.id;
+              return <div key={entry.place.id} className={`flex min-h-64 flex-col rounded-2xl border bg-white p-5 shadow-sm ${selected ? 'border-zinc-950 ring-2 ring-zinc-950' : index === 0 ? 'border-amber-400' : 'border-zinc-200'}`}>
+                <div className="flex items-start justify-between gap-3"><span className={`text-6xl font-black leading-none tabular-nums ${index === 0 ? 'text-amber-500' : 'text-zinc-200'}`}>{index + 1}</span><span className="rounded-full bg-zinc-100 px-3 py-1 text-xs font-bold text-zinc-700">{entry.votes_count} โหวต</span></div>
+                <div className="mt-4 flex-1"><h3 className="m-0 text-lg font-bold leading-snug text-zinc-950">{entry.place.name}</h3><p className="mb-0 mt-1 flex items-center gap-1 text-xs text-zinc-500"><MapPin className="h-3.5 w-3.5" />{entry.zone?.name_th || 'เชียงใหม่'} · {entry.percentage}%{entry.is_tied ? ' · คะแนนเท่ากัน' : ''}</p></div>
+                <div className="mt-5 flex gap-2">
+                  {voted ? (
+                    <button onClick={() => void handleRemoveVote(entry.place.id)} disabled={!isSessionActive || isVoting} className="h-12 flex-1 rounded-xl border border-rose-300 bg-white text-sm font-bold text-rose-700 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50">{isVoting ? 'กำลังดำเนินการ…' : 'ถอนโหวตของฉัน'}</button>
+                  ) : (
+                    <button onClick={() => setSelectedPlaceId(entry.place.id)} aria-pressed={selected} className={`h-12 flex-1 rounded-xl text-sm font-bold transition ${selected ? 'bg-zinc-950 text-white' : 'bg-zinc-100 text-zinc-950 hover:bg-zinc-200'}`}>{selected ? 'เลือกแล้ว' : 'เลือกร้านนี้'}</button>
+                  )}
+                  <button onClick={() => handleInspectOnMap(entry.place.id)} aria-label={`ดู ${entry.place.name} บนแผนที่`} className="flex h-12 w-12 items-center justify-center rounded-xl border border-zinc-200 text-zinc-700 hover:bg-zinc-100"><Compass className="h-5 w-5" /></button>
+                </div>
+              </div>;
+            })}
+          </div>
+        </section>
+
+        <section className="mt-10" aria-labelledby="all-results-title">
+          <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between"><h2 id="all-results-title" className="m-0 text-xl font-black">ร้านทั้งหมด <span className="text-base font-normal text-zinc-500">({filteredEntries.length})</span></h2><div className="flex gap-2"><label className="relative min-w-0 flex-1 sm:w-52"><Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-500" /><span className="sr-only">ค้นหาร้าน</span><input value={searchQuery} onChange={event => setSearchQuery(event.target.value)} placeholder="ค้นหาร้าน" className="h-11 w-full rounded-xl border border-zinc-300 bg-white pl-9 pr-3 text-sm outline-none focus:border-zinc-950" /></label><select value={selectedZone} onChange={event => setSelectedZone(event.target.value)} aria-label="เลือกโซน" className="h-11 max-w-32 rounded-xl border border-zinc-300 bg-white px-2 text-sm sm:max-w-none"><option value="all">ทุกโซน</option>{zones.filter(zone => !hiddenZoneIds.includes(zone.id)).map(zone => <option key={zone.id} value={zone.id}>{zone.name_th}</option>)}</select></div></div>
+          <div className="divide-y divide-zinc-200 overflow-hidden rounded-2xl border border-zinc-200 bg-white">
+            {filteredEntries.map(entry => {
+              const voted = myVotePlaceId === entry.place.id;
+              return <div key={entry.place.id} className={`flex items-center gap-3 p-3 sm:p-4 ${selectedPlaceId === entry.place.id ? 'bg-amber-50' : ''}`}>
+                <span className="w-8 shrink-0 text-center text-xl font-black tabular-nums text-zinc-400">{entry.rank}</span>
+                <div className="min-w-0 flex-1">
+                  <div className="truncate text-sm font-bold text-zinc-950">{entry.place.name}</div>
+                  <div className="truncate text-xs text-zinc-500">{entry.zone?.name_th || 'เชียงใหม่'} · {entry.votes_count} โหวต</div>
+                </div>
+                {voted ? <button onClick={() => void handleRemoveVote(entry.place.id)} disabled={!isSessionActive || isVoting} className="h-11 shrink-0 rounded-xl border border-rose-300 px-3 text-sm font-bold text-rose-700 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50">ถอนโหวต</button>
+                  : <button onClick={() => setSelectedPlaceId(entry.place.id)} aria-pressed={selectedPlaceId === entry.place.id} className={`h-11 shrink-0 rounded-xl px-4 text-sm font-bold ${selectedPlaceId === entry.place.id ? 'bg-zinc-950 text-white' : 'border border-zinc-300 text-zinc-800'}`}>{selectedPlaceId === entry.place.id ? 'เลือกแล้ว' : 'เลือก'}</button>}
+              </div>;
+            })}
+            {filteredEntries.length === 0 && <p className="m-0 px-4 py-10 text-center text-sm text-zinc-500">ไม่พบร้านจากตัวกรองนี้</p>}
+          </div>
+        </section>
       </div>
 
-      <section className="my-6 max-w-4xl mx-auto">
-        <div className="flex items-end justify-between gap-4 pb-4 border-b border-zinc-800">
-          <div>
-            <p className="text-xs text-zinc-400 m-0">คะแนนโหวตทั้งหมด</p>
-            <p className="text-3xl font-bold text-white tabular-nums mt-1 mb-0">{totalVotes}</p>
-          </div>
-          <p className="text-xs text-zinc-500 m-0">{places.length} ร้าน</p>
-        </div>
-        <p className="text-[11px] text-zinc-500 mt-3 mb-0">
-          {isSupabaseConfigured
-            ? 'คะแนนบันทึกบนระบบกลางและอัปเดตให้ผู้ใช้ทุกคน'
-            : 'โหมดนี้บันทึกคะแนนในเบราว์เซอร์นี้ หากต้องการโหวตร่วมกันหลายเครื่องให้ตั้งค่า Supabase'}
-        </p>
-
-        {!isSessionActive && (
-          <p className="mt-4 mb-0 rounded-xl border border-amber-500/20 bg-amber-500/5 px-3 py-2 text-xs text-amber-200" role="status">
-            {!activeSession ? 'ยังไม่มีรอบโหวตในฐานข้อมูล กรุณาตั้งค่ารอบโหวตก่อนเริ่มใช้งาน' : 'ขณะนี้ไม่อยู่ในช่วงเวลาที่เปิดโหวต'}
-          </p>
-        )}
-        {voteMessage && <p className="mt-3 mb-0 text-xs text-emerald-300" role="status" aria-live="polite">{voteMessage}</p>}
-
-        {filteredEntries.every(entry => entry.votes_count === 0) && filteredEntries.length > 0 && (
-          <p className="my-4 text-sm text-zinc-400" role="status">ยังไม่มีคะแนนโหวต เลือกร้านที่อยากไปแล้วกดโหวตได้เลย</p>
-        )}
-
-        {filteredEntries[0]?.votes_count > 0 && (
-          <div className="py-5 border-b border-zinc-800">
-            <p className="text-[11px] text-amber-400 font-semibold mb-2">อันดับ 1{filteredEntries[0].votes_count > 0 ? ' · ผู้นำขณะนี้' : ''}</p>
-            <div className="flex items-center gap-4">
-              <img src={filteredEntries[0].place.image_url} alt="" className="w-16 h-16 rounded-xl object-cover bg-zinc-900" />
-              <div className="min-w-0 flex-1">
-                <h2 className="text-lg sm:text-xl font-bold text-white truncate m-0">{filteredEntries[0].place.name}</h2>
-                <p className="text-xs text-zinc-400 mt-1 mb-0">{filteredEntries[0].zone?.name_th || 'เชียงใหม่'} · {filteredEntries[0].votes_count} โหวต ({filteredEntries[0].percentage}%)</p>
-              </div>
-              <button onClick={() => handleInspectOnMap(filteredEntries[0].place.id)} className="p-2 rounded-lg text-zinc-400 hover:text-white hover:bg-zinc-900" title="ดูบนแผนที่">
-                <Navigation className="w-4 h-4" />
-              </button>
-            </div>
-            <div className="h-1 bg-zinc-900 rounded-full mt-4 overflow-hidden">
-              <div className="h-full bg-amber-400" style={{ width: `${filteredEntries[0].percentage}%` }} />
-            </div>
-          </div>
-        )}
-
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 py-4">
-          <h2 className="text-sm font-semibold text-white m-0">อันดับร้านทั้งหมด <span className="text-zinc-500 font-normal">({filteredEntries.length})</span></h2>
-          <div className="flex items-center gap-2">
-            <div className="relative">
-              <Search className="w-3.5 h-3.5 text-zinc-500 absolute left-2.5 top-1/2 -translate-y-1/2" />
-              <input type="text" placeholder="ค้นหาร้านหมูกระทะ" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="bg-zinc-900 text-zinc-200 text-xs pl-8 pr-3 py-2 rounded-lg border border-zinc-800 focus:outline-none focus:border-zinc-600 w-40" />
-            </div>
-            <select value={selectedZone} onChange={(e) => setSelectedZone(e.target.value)} className="bg-zinc-900 text-zinc-300 text-xs px-2.5 py-2 rounded-lg border border-zinc-800 focus:outline-none">
-              <option value="all">ทุกโซน</option>
-              {zones.filter(z => !hiddenZoneIds.includes(z.id)).map(z => <option key={z.id} value={z.id}>{z.name_th}</option>)}
-            </select>
-          </div>
-        </div>
-
-        <div className="divide-y divide-zinc-800/80 border-y border-zinc-800">
-          {filteredEntries.map(entry => {
-            const isUserChoice = userVotedPlaceId === entry.place.id;
-            return (
-              <div key={entry.place.id} className="flex items-center gap-3 py-3">
-                <span className={`w-8 text-center text-sm font-semibold tabular-nums ${entry.votes_count > 0 && entry.rank === 1 ? 'text-amber-400' : 'text-zinc-500'}`}>{entry.votes_count > 0 ? entry.rank : '—'}</span>
-                <img src={entry.place.image_url} alt="" className="w-11 h-11 rounded-lg object-cover bg-zinc-900" />
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-sm font-medium text-zinc-100 truncate">{entry.place.name}</span>
-                    {entry.place.verification_status === 'verified' && <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 flex-shrink-0" />}
-                  </div>
-                  <p className="text-[11px] text-zinc-500 truncate mt-0.5 mb-0">{entry.zone?.name_th} · {entry.place.category}</p>
-                </div>
-                <div className="text-right w-20 flex-shrink-0">
-                  <p className="text-sm font-semibold text-zinc-200 tabular-nums m-0">{entry.votes_count}</p>
-                  <p className="text-[10px] text-zinc-500 m-0">{entry.percentage}%</p>
-                </div>
-                <button onClick={() => handleInspectOnMap(entry.place.id)} className="p-2 rounded-lg text-zinc-500 hover:text-white hover:bg-zinc-900" title="ดูบนแผนที่">
-                  <Navigation className="w-4 h-4" />
-                </button>
-                <button
-                  onClick={() => void handleVote(entry.place.id)}
-                  disabled={!isSessionActive || votingPlaceId !== null}
-                  aria-pressed={isUserChoice}
-                  className={`text-[11px] px-2.5 py-1.5 rounded-lg disabled:opacity-40 disabled:cursor-not-allowed ${isUserChoice ? 'text-emerald-400 bg-emerald-500/10' : 'text-zinc-300 hover:bg-zinc-900'}`}
-                >
-                  {votingPlaceId === entry.place.id ? 'กำลังบันทึก…' : isUserChoice ? 'โหวตแล้ว' : 'โหวต'}
-                </button>
-              </div>
-            );
-          })}
-          {filteredEntries.length === 0 && (
-            <p className="py-10 text-center text-sm text-zinc-500">
-              {places.length === 0 ? 'ยังไม่มีร้านในรอบโหวตนี้ กรุณาตั้งค่าร้านและตัวเลือกโหวตใน Supabase' : 'ไม่พบร้านหมูกระทะจากตัวกรองนี้'}
-            </p>
-          )}
-        </div>
-      </section>
+      <div className="fixed inset-x-0 bottom-0 z-30 border-t border-zinc-200 bg-white/95 px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3 shadow-[0_-8px_30px_rgba(0,0,0,0.08)] backdrop-blur-md">
+        <div className="mx-auto flex max-w-6xl flex-col gap-2 sm:flex-row sm:items-center sm:gap-5"><div className="min-w-0 flex-1"><div className="text-[11px] font-semibold text-zinc-500">ร้านที่เลือก</div><div className="truncate text-sm font-bold text-zinc-950">{selectedPlace?.name || 'เลือกร้านจากอันดับด้านบน'}</div></div><button onClick={() => void handleVote()} disabled={!selectedPlaceId || !isSessionActive || isVoting || myVotePlaceId === selectedPlaceId} className="h-14 w-full rounded-xl bg-zinc-950 px-8 text-base font-black text-white transition hover:bg-zinc-800 disabled:cursor-not-allowed disabled:bg-zinc-300 disabled:text-zinc-600 sm:w-72">{isVoting ? 'กำลังบันทึก…' : myVotePlaceId === selectedPlaceId && selectedPlaceId ? 'โหวตแล้ว' : 'โหวตร้านนี้'}</button></div>
+      </div>
       <VotingSessionControls isOpen={isSessionControlsOpen} onClose={() => setIsSessionControlsOpen(false)} />
     </div>
   );

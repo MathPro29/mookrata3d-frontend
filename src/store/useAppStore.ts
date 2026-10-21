@@ -44,6 +44,7 @@ interface AppState {
   // Actions
   init: () => Promise<void>;
   setVotingSession: (session: VotingSession) => void;
+  finalizeVotingSession: () => Promise<void>;
   setCurrentView: (view: 'map' | 'results') => void;
   toggleQrModal: (open?: boolean, placeId?: string | null) => void;
   setMapInstance: (map: any) => void;
@@ -59,6 +60,7 @@ interface AppState {
   setSearchQuery: (query: string) => void;
   setSelectedCategory: (cat: string) => void;
   castVote: (placeId: string) => Promise<{ success: boolean; action: string; message?: string }>;
+  removeVote: (placeId: string) => Promise<{ success: boolean; message?: string }>;
   addPlace: (newPlace: Omit<Place, 'id' | 'created_at'>) => Promise<Place>;
   resetCamera: () => void;
 
@@ -99,9 +101,9 @@ export const useAppStore = create<AppState>((set, get) => ({
       set({ isLoading: true, loadError: null });
       const session = await VotingService.getActiveSession();
       const sessionPlaces = await VotingService.getPlaces(session?.id);
-      const votes = session ? await VotingService.getVotes(session.id) : [];
+      const votes = session && !session.final_results ? await VotingService.getVotes(session.id) : [];
       let myVotePlaceId: string | null = null;
-      if (session) {
+      if (session && !session.final_results) {
         try {
           myVotePlaceId = await VotingService.getCurrentUserVote(session.id, get().userId);
         } catch (error) {
@@ -129,13 +131,15 @@ export const useAppStore = create<AppState>((set, get) => ({
         }
         const [updatedPlaces, updatedVotes] = await Promise.all([
           VotingService.getPlaces(sessionId),
-          VotingService.getVotes(sessionId)
+          session.final_results ? Promise.resolve([]) : VotingService.getVotes(sessionId)
         ]);
         let myVotePlaceId: string | null = null;
-        try {
-          myVotePlaceId = await VotingService.getCurrentUserVote(sessionId, get().userId);
-        } catch (error) {
-          console.warn('Could not refresh this device vote status:', error);
+        if (!session.final_results) {
+          try {
+            myVotePlaceId = await VotingService.getCurrentUserVote(sessionId, get().userId);
+          } catch (error) {
+            console.warn('Could not refresh this device vote status:', error);
+          }
         }
         set({ activeSession: session, places: updatedPlaces, votes: updatedVotes, myVotePlaceId });
       });
@@ -149,7 +153,18 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   setCurrentView: (view) => set({ currentView: view }),
-  setVotingSession: (session) => set({ activeSession: session }),
+  setVotingSession: (session) => set(state => ({
+    activeSession: session,
+    ...(session.final_results || state.activeSession?.status === 'completed'
+      ? { votes: [], myVotePlaceId: null }
+      : {}),
+  })),
+  finalizeVotingSession: async () => {
+    const session = get().activeSession;
+    if (!session || session.final_results) return;
+    const completed = await VotingService.finalizeSession(session.id);
+    set({ activeSession: completed, votes: [], myVotePlaceId: null });
+  },
   toggleQrModal: (open, placeId = null) => {
     set((state) => ({
       isQrModalOpen: open !== undefined ? open : !state.isQrModalOpen,
@@ -188,7 +203,9 @@ export const useAppStore = create<AppState>((set, get) => ({
         const west = parseFloat(zone.boundingbox[2]);
         const east = parseFloat(zone.boundingbox[3]);
         mapInstance.fitBounds([[west, south], [east, north]], {
-          padding: { top: 100, bottom: 100, left: 340, right: 100 },
+          padding: window.innerWidth < 1024
+            ? { top: 110, bottom: 90, left: 32, right: 32 }
+            : { top: 100, bottom: 100, left: 340, right: 100 },
           maxZoom: 15.5,
           pitch: get().is3D ? 45 : 0,
           duration: 1400
@@ -222,7 +239,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   selectPlace: (placeId, shouldFly = true) => {
-    set({ selectedPlaceId: placeId });
+    set({ selectedPlaceId: placeId, isSidebarOpen: false });
     const { mapInstance, places } = get();
     if (!placeId || !mapInstance) return;
 
@@ -314,6 +331,28 @@ export const useAppStore = create<AppState>((set, get) => ({
     } catch (err: any) {
       console.error('Vote failed:', err);
       return { success: false, action: 'ERROR', message: err instanceof Error ? err.message : undefined };
+    }
+  },
+
+  removeVote: async (placeId) => {
+    const { activeSession, userId, myVotePlaceId } = get();
+    if (!activeSession || myVotePlaceId !== placeId) {
+      return { success: false, message: 'ไม่พบคะแนนโหวตของคุณที่ร้านนี้' };
+    }
+
+    try {
+      const result = await VotingService.removeVote(activeSession.id, placeId, userId);
+      if (!result.success) return { success: false, message: 'ไม่พบคะแนนโหวตของคุณที่ร้านนี้' };
+      set({ myVotePlaceId: null });
+      try {
+        set({ votes: await VotingService.getVotes(activeSession.id) });
+      } catch (error) {
+        console.warn('Could not refresh votes after removal:', error);
+      }
+      return { success: true };
+    } catch (err) {
+      console.error('Remove vote failed:', err);
+      return { success: false, message: err instanceof Error ? err.message : 'ถอนโหวตไม่สำเร็จ กรุณาลองอีกครั้ง' };
     }
   },
 

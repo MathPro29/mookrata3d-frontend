@@ -104,7 +104,7 @@ export const AddPlaceModal: React.FC = () => {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-black/70 backdrop-blur-md animate-in fade-in duration-200">
-      <div className="w-full max-w-lg max-h-[90vh] rounded-3xl bg-zinc-950 border border-zinc-800 shadow-2xl flex flex-col overflow-hidden animate-in zoom-in-95 duration-200">
+      <div className="w-full max-w-lg max-h-[calc(100dvh-1.5rem)] sm:max-h-[90dvh] rounded-3xl bg-zinc-950 border border-zinc-800 shadow-2xl flex flex-col overflow-hidden animate-in zoom-in-95 duration-200">
         
         {/* Header */}
         <div className="p-4 sm:p-5 border-b border-zinc-800 flex items-center justify-between bg-zinc-900/50">
@@ -114,7 +114,7 @@ export const AddPlaceModal: React.FC = () => {
             </div>
             <div>
               <h2 className="text-sm sm:text-base font-bold text-white m-0">เพิ่มร้านหมูกระทะ</h2>
-              <p className="text-[11px] text-zinc-400 m-0">ปักหมุดร้านพร้อมพิกัดเพื่อเข้าร่วมระบบโหวต</p>
+              <p className="text-[11px] text-zinc-400 m-0">ปักหมุดร้านพร้อมพิกัดบนแผนที่</p>
             </div>
           </div>
 

@@ -55,7 +55,7 @@ export const VotingSessionControls: React.FC<VotingSessionControlsProps> = ({ is
         action !== 'close_now' ? new Date(endsAt).toISOString() : undefined,
       );
       setVotingSession(updated);
-      setMessage(action === 'close_now' ? 'ปิดโหวตแล้ว' : action === 'reopen' ? 'เปิดโหวตอีกครั้งแล้ว โดยเก็บคะแนนเดิมไว้' : 'บันทึกเวลาปิดโหวตแล้ว');
+      setMessage(action === 'close_now' ? 'ปิดโหวตและล้างคะแนนแล้ว' : action === 'reopen' ? 'เปิดโหวตรอบใหม่แล้ว คะแนนเริ่มจากศูนย์' : 'บันทึกเวลาปิดโหวตแล้ว');
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'บันทึกไม่สำเร็จ กรุณาลองอีกครั้ง');
     } finally {
@@ -93,7 +93,7 @@ export const VotingSessionControls: React.FC<VotingSessionControlsProps> = ({ is
           <p className="mb-0 mt-5 text-sm text-zinc-300">ยังไม่มีรอบโหวตในฐานข้อมูล</p>
         ) : isClosed ? (
           <div className="mt-5 space-y-4">
-            <p className="m-0 rounded-xl border border-amber-500/20 bg-amber-500/5 p-3 text-sm text-amber-100">คะแนนเดิมจะยังคงอยู่เมื่อเปิดโหวตอีกครั้ง</p>
+            <p className="m-0 rounded-xl border border-amber-500/20 bg-amber-500/5 p-3 text-sm text-amber-100">คะแนนโหวตรอบก่อนถูกล้างแล้ว รอบใหม่จะเริ่มจากศูนย์</p>
             <div>
               <label htmlFor="vote-end-time" className="mb-1.5 block text-xs font-medium text-zinc-300">กำหนดเวลาปิดรอบที่เปิดใหม่</label>
               <input id="vote-end-time" type="datetime-local" value={endsAt} onChange={event => setEndsAt(event.target.value)} disabled={isSaving} className="w-full rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2.5 text-sm text-white outline-none focus:border-amber-400" />
@@ -104,7 +104,7 @@ export const VotingSessionControls: React.FC<VotingSessionControlsProps> = ({ is
               <p className="mb-0 mt-1.5 text-[11px] text-zinc-500">รหัสนี้ใช้ตรวจสิทธิ์ตอนบันทึก และไม่ถูกเก็บไว้ในเครื่อง</p>
             </div>
             {message && <p className="m-0 text-sm text-amber-200" role="status" aria-live="polite">{message}</p>}
-            <button type="button" onClick={() => void runAction('reopen')} disabled={!canManage || isSaving} className="w-full rounded-xl bg-emerald-400 px-4 py-2.5 text-sm font-bold text-zinc-950 hover:bg-emerald-300 disabled:cursor-not-allowed disabled:opacity-40">{isSaving ? 'กำลังบันทึก…' : 'เปิดโหวตอีกครั้ง'}</button>
+            <button type="button" onClick={() => void runAction('reopen')} disabled={!canManage || isSaving} className="w-full rounded-xl bg-emerald-400 px-4 py-2.5 text-sm font-bold text-zinc-950 hover:bg-emerald-300 disabled:cursor-not-allowed disabled:opacity-40">{isSaving ? 'กำลังบันทึก…' : 'เริ่มโหวตรอบใหม่'}</button>
           </div>
         ) : (
           <div className="mt-5 space-y-4">

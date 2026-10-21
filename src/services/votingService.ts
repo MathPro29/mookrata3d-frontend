@@ -64,7 +64,7 @@ if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
 
 export interface VoteResult {
   success: boolean;
-  action: 'VOTE_CAST' | 'VOTE_CHANGED' | 'NO_CHANGE';
+  action: 'VOTE_CAST' | 'VOTE_CHANGED' | 'VOTE_REMOVED' | 'NO_CHANGE' | 'NO_VOTE';
   session_id: string;
   place_id: string;
   user_id?: string;
@@ -87,13 +87,12 @@ export class VotingService {
         .maybeSingle();
 
       if (!error && data) {
-        const cloudSession = data as VotingSession;
-        // Keep the seeded poll open until an admin closes it.
-        if (cloudSession.id === initialSession.id && cloudSession.status === 'active' &&
-          Date.parse(cloudSession.ends_at) < Date.now()) {
-          return { ...cloudSession, ends_at: initialSession.ends_at };
+        const session = data as VotingSession;
+        if (!session.final_results && (session.status === 'completed' || Date.now() >= Date.parse(session.ends_at))) {
+          try { return await this.finalizeSession(session.id); }
+          catch (error) { console.warn('Could not finalize voting session:', error); }
         }
-        return cloudSession;
+        return session;
       }
       if (error) throw new Error(error.message);
       return null;
@@ -103,12 +102,55 @@ export class VotingService {
     const saved = localStorage.getItem(LOCAL_SESSION_KEY);
     if (saved) {
       try {
-        return JSON.parse(saved);
+        const session = JSON.parse(saved) as VotingSession;
+        if (!session.final_results && (session.status === 'completed' || Date.now() >= Date.parse(session.ends_at))) {
+          return await this.finalizeSession(session.id);
+        }
+        return session;
       } catch (e) {
         // use initial
       }
     }
     return initialSession;
+  }
+
+  static async finalizeSession(sessionId: string): Promise<VotingSession> {
+    if (isSupabaseConfigured && supabase) {
+      const { data, error } = await supabase.functions.invoke('finalize-vote', {
+        body: { session_id: sessionId },
+      });
+      if (error) throw new Error(error.message);
+      if (data?.error) throw new Error(data.error);
+      return data.session as VotingSession;
+    }
+
+    const saved = localStorage.getItem(LOCAL_SESSION_KEY);
+    const session: VotingSession = saved ? JSON.parse(saved) : initialSession;
+    if (session.id !== sessionId || (session.status !== 'completed' && Date.now() < Date.parse(session.ends_at))) {
+      throw new Error('Voting session has not ended');
+    }
+    if (session.final_results) return session;
+
+    const votes = await this.getVotes(sessionId);
+    const places = await this.getPlaces(sessionId);
+    const counts = new Map<string, number>();
+    votes.forEach(vote => counts.set(vote.place_id, (counts.get(vote.place_id) || 0) + 1));
+    const highest = Math.max(0, ...counts.values());
+    const completed: VotingSession = {
+      ...session,
+      status: 'completed',
+      final_results: {
+        winners: highest > 0 ? places.filter(place => counts.get(place.id) === highest)
+          .map(place => ({ place_id: place.id, name: place.name, votes_count: highest })) : [],
+        winning_vote_count: highest,
+        total_votes: votes.length,
+      },
+    };
+    const savedVotes: Vote[] = JSON.parse(localStorage.getItem(LOCAL_VOTES_KEY) || '[]');
+    localStorage.setItem(LOCAL_SESSION_KEY, JSON.stringify(completed));
+    localStorage.setItem(LOCAL_VOTES_KEY, JSON.stringify(savedVotes.filter(vote => vote.session_id !== sessionId)));
+    broadcastChannel?.postMessage({ type: 'SESSION_UPDATE' });
+    return completed;
   }
 
   static async getCurrentUserVote(sessionId: string, userId: string): Promise<string | null> {
@@ -326,6 +368,36 @@ export class VotingService {
     }
 
     return result;
+  }
+
+  static async removeVote(sessionId: string, placeId: string, userId: string): Promise<VoteResult> {
+    if (isSupabaseConfigured && supabase) {
+      const { data, error } = await supabase.functions.invoke('cast-vote', {
+        body: { session_id: sessionId, place_id: placeId, action: 'remove' },
+      });
+      if (error) throw new Error(error.message);
+      if (data?.error) throw new Error(data.error);
+      return data as VoteResult;
+    }
+
+    const session = await this.getActiveSession();
+    const now = Date.now();
+    if (!session || session.id !== sessionId || session.status !== 'active' ||
+      now < Date.parse(session.starts_at) || now > Date.parse(session.ends_at)) {
+      throw new Error('Voting session is not active');
+    }
+
+    const saved = localStorage.getItem(LOCAL_VOTES_KEY);
+    const votes: Vote[] = saved ? JSON.parse(saved) : [];
+    const voteIndex = votes.findIndex(vote =>
+      vote.session_id === sessionId && vote.user_id === userId && vote.place_id === placeId
+    );
+    if (voteIndex < 0) return { success: false, action: 'NO_VOTE', session_id: sessionId, place_id: placeId };
+
+    votes.splice(voteIndex, 1);
+    localStorage.setItem(LOCAL_VOTES_KEY, JSON.stringify(votes));
+    broadcastChannel?.postMessage({ type: 'VOTE_UPDATE' });
+    return { success: true, action: 'VOTE_REMOVED', session_id: sessionId, place_id: placeId };
   }
 
   /**

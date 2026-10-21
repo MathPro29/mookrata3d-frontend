@@ -65,7 +65,7 @@ export const Sidebar: React.FC = () => {
 
       {/* Main Sidebar Container */}
       <aside
-        className={`fixed lg:absolute top-18 bottom-4 left-4 w-88 sm:w-96 rounded-2xl bg-zinc-950/90 border border-zinc-800/80 shadow-2xl backdrop-blur-xl z-30 flex flex-col overflow-hidden transition-all duration-300 ${
+        className={`fixed lg:absolute top-[calc(8rem+env(safe-area-inset-top))] sm:top-18 bottom-0 left-0 w-full sm:bottom-4 sm:left-4 sm:w-96 rounded-t-2xl sm:rounded-2xl bg-zinc-950/95 border border-zinc-800/80 shadow-2xl backdrop-blur-xl z-40 flex flex-col overflow-hidden transition-all duration-300 ${
           isSidebarOpen ? 'translate-x-0' : '-translate-x-[110%]'
         }`}
       >
@@ -213,8 +213,6 @@ export const Sidebar: React.FC = () => {
                             {zone.zone_type}
                           </span>
                           <span>{stats.placesCount} ร้าน</span>
-                          <span>•</span>
-                          <span className="text-amber-400/90 font-medium">{stats.votesCount} โหวต</span>
                         </div>
                       </div>
                     </div>

@@ -48,6 +48,11 @@ export interface VotingSession {
   starts_at: string;
   ends_at: string;
   created_at: string;
+  final_results?: {
+    winners: { place_id: string; name: string; votes_count: number }[];
+    winning_vote_count: number;
+    total_votes: number;
+  } | null;
 }
 
 export interface VotingSessionPlace {

@@ -39,7 +39,6 @@ export const MapContainer: React.FC = () => {
     zones,
     hiddenZoneIds,
     places,
-    votes,
     selectedZoneId,
     hoveredZoneId,
     selectedPlaceId,
@@ -51,24 +50,15 @@ export const MapContainer: React.FC = () => {
     selectPlace,
     toggle3D,
     toggleZones,
-    resetCamera,
-    getLeaderboard
+    resetCamera
   } = useAppStore();
 
+  const currentView = useAppStore(state => state.currentView);
   useEffect(() => {
-    if (useAppStore.getState().currentView !== 'map') return;
-    const map = mapRef.current;
-    if (!map) return;
-
-    const resizeFrame = requestAnimationFrame(() => {
-      map.resize();
-    });
-
-    return () => cancelAnimationFrame(resizeFrame);
-  }, [useAppStore(state => state.currentView)]);
-
-  const leaderboard = getLeaderboard();
-  const topPlaceId = leaderboard.length > 0 && leaderboard[0].votes_count > 0 ? leaderboard[0].place.id : null;
+    if (currentView !== 'map' || !mapRef.current) return;
+    const frame = requestAnimationFrame(() => mapRef.current?.resize());
+    return () => cancelAnimationFrame(frame);
+  }, [currentView]);
 
   // Initialize Map
   useEffect(() => {
@@ -394,8 +384,6 @@ export const MapContainer: React.FC = () => {
     // Create / Update markers
     activePlaces.forEach(place => {
       const isSelected = place.id === selectedPlaceId;
-      const isTopLeader = place.id === topPlaceId;
-      const placeVotes = votes.filter(v => v.place_id === place.id).length;
 
       // Category icon helper
       const getCategoryIconSvg = (cat: string) => {
@@ -421,22 +409,19 @@ export const MapContainer: React.FC = () => {
             <!-- Tooltip popup on hover -->
             <div class="opacity-0 group-hover:opacity-100 transition-all duration-200 pointer-events-none absolute -top-10 bg-zinc-900/95 text-white text-xs px-2.5 py-1 rounded-md shadow-xl border border-zinc-700 whitespace-nowrap z-50 flex items-center gap-1.5">
               <span class="font-medium">${place.name}</span>
-              <span class="bg-amber-500/20 text-amber-300 px-1 py-0.2 rounded text-[10px] font-semibold">${placeVotes} โหวต</span>
             </div>
 
             <!-- Pin Head -->
             <div class="relative flex items-center justify-center">
-              <div class="pin-badge ${isTopLeader ? 'is-top-leader' : isSelected ? 'is-selected' : ''} rounded-xl shadow-2xl transition-all duration-200">
+              <div class="pin-badge ${isSelected ? 'is-selected' : ''} rounded-xl shadow-2xl transition-all duration-200">
                 <img class="pin-photo" src="${place.image_url || ''}" alt="" />
                 <div class="pin-photo-fallback">${getCategoryIconSvg(place.category)}</div>
-                <span class="pin-vote-count">${placeVotes}</span>
               </div>
-              ${isTopLeader ? `<div class="absolute -top-2 -right-2 bg-amber-400 text-zinc-950 text-[10px] font-extrabold px-1.5 py-0.5 rounded-full shadow border border-white">#1</div>` : ''}
               ${isSelected ? `<div class="absolute inset-0 rounded-xl marker-pulse pointer-events-none"></div>` : ''}
             </div>
 
             <!-- Pin Tail -->
-            <div class="w-0 h-0 border-l-[6px] border-l-transparent border-r-[6px] border-r-transparent border-t-[8px] ${isTopLeader ? 'border-t-amber-500' : isSelected ? 'border-t-white' : 'border-t-zinc-900/90'} -mt-[1px]"></div>
+            <div class="w-0 h-0 border-l-[6px] border-l-transparent border-r-[6px] border-r-transparent border-t-[8px] ${isSelected ? 'border-t-white' : 'border-t-zinc-900/90'} -mt-[1px]"></div>
           </div>
         `;
 
@@ -460,10 +445,6 @@ export const MapContainer: React.FC = () => {
         // Update DOM classes for existing marker
         const el = markersRef.current[place.id].getElement();
         const pinBadge = el.querySelector('.pin-badge');
-        const countSpan = el.querySelector('.pin-vote-count');
-        const tooltipCount = el.querySelector('.group-hover\\:opacity-100 span:last-child');
-
-        if (countSpan) countSpan.textContent = String(placeVotes);
         const pinImage = el.querySelector<HTMLImageElement>('.pin-photo');
         if (pinImage && pinImage.getAttribute('src') !== (place.image_url || '')) {
           pinImage.hidden = false;
@@ -477,12 +458,9 @@ export const MapContainer: React.FC = () => {
           pinImage.hidden = true;
           fallback?.classList.add('is-visible');
         }
-        if (tooltipCount) tooltipCount.textContent = `${placeVotes} โหวต`;
 
         if (pinBadge) {
-          if (isTopLeader) {
-            pinBadge.className = 'pin-badge is-top-leader rounded-xl shadow-2xl transition-all duration-200';
-          } else if (isSelected) {
+          if (isSelected) {
             pinBadge.className = 'pin-badge is-selected rounded-xl shadow-2xl transition-all duration-200';
           } else {
             pinBadge.className = 'pin-badge rounded-xl shadow-2xl transition-all duration-200';
@@ -490,7 +468,7 @@ export const MapContainer: React.FC = () => {
         }
       }
     });
-  }, [places, votes, selectedZoneId, selectedPlaceId, hiddenZoneIds, topPlaceId]);
+  }, [places, selectedZoneId, selectedPlaceId, hiddenZoneIds]);
 
   // Floating Controls Handlers
   const handleZoomIn = () => mapRef.current?.zoomIn();
@@ -515,7 +493,7 @@ export const MapContainer: React.FC = () => {
       )}
 
       {/* Floating Map Controls (Right Side) */}
-      <div className={`absolute top-20 flex flex-col gap-2 z-20 transition-[right] duration-200 ${mapControlsOpen ? 'right-4' : 'right-0'}`}>
+      <div className={`absolute top-[calc(8rem+env(safe-area-inset-top))] sm:top-20 flex flex-col gap-2 z-20 transition-[right] duration-200 ${mapControlsOpen ? 'right-3 sm:right-4' : 'right-0'}`}>
         <button
           onClick={() => setMapControlsOpen(open => !open)}
           aria-expanded={mapControlsOpen}
@@ -587,7 +565,7 @@ export const MapContainer: React.FC = () => {
 
       {/* Selected Zone Pill (Bottom Center) */}
       {selectedZoneId && (
-        <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-20 flex items-center gap-3 px-4 py-2 rounded-full bg-zinc-950/90 border border-zinc-700/80 shadow-2xl backdrop-blur-md text-sm animate-in fade-in slide-in-from-bottom-2 duration-300">
+        <div className="absolute bottom-[max(1.5rem,env(safe-area-inset-bottom))] left-1/2 z-20 flex w-[calc(100%-2rem)] max-w-max -translate-x-1/2 flex-wrap items-center justify-center gap-x-2 gap-y-1 rounded-2xl border border-zinc-700/80 bg-zinc-950/90 px-4 py-2 text-center text-xs shadow-2xl backdrop-blur-md sm:text-sm">
           <span className="w-2.5 h-2.5 rounded-full bg-amber-400 animate-ping"></span>
           <span className="text-zinc-400">กำลังดูโซน:</span>
           <span className="font-semibold text-white">
