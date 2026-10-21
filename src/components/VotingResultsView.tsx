@@ -53,7 +53,7 @@ export const VotingResultsView: React.FC = () => {
     const result = await castVote(placeId);
     setVoteMessage(result.success
       ? result.action === 'NO_CHANGE' ? 'คุณโหวตร้านนี้ไว้แล้ว' : result.action === 'VOTE_CHANGED' ? 'เปลี่ยนคะแนนโหวตแล้ว' : 'บันทึกคะแนนโหวตแล้ว'
-      : result.action === 'NO_SESSION' ? 'ขณะนี้ยังไม่มีรอบโหวตที่เปิดอยู่' : 'บันทึกคะแนนไม่สำเร็จ กรุณาลองอีกครั้ง');
+      : result.action === 'NO_SESSION' ? 'ขณะนี้ยังไม่มีรอบโหวตที่เปิดอยู่' : result.message || 'บันทึกคะแนนไม่สำเร็จ กรุณาลองอีกครั้ง');
     setVotingPlaceId(null);
   };
 

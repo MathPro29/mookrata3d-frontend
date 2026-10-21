@@ -58,7 +58,7 @@ interface AppState {
   toggleSidebar: (open?: boolean) => void;
   setSearchQuery: (query: string) => void;
   setSelectedCategory: (cat: string) => void;
-  castVote: (placeId: string) => Promise<{ success: boolean; action: string }>;
+  castVote: (placeId: string) => Promise<{ success: boolean; action: string; message?: string }>;
   addPlace: (newPlace: Omit<Place, 'id' | 'created_at'>) => Promise<Place>;
   resetCamera: () => void;
 
@@ -313,7 +313,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       return { success: true, action: result.action };
     } catch (err: any) {
       console.error('Vote failed:', err);
-      return { success: false, action: 'ERROR' };
+      return { success: false, action: 'ERROR', message: err instanceof Error ? err.message : undefined };
     }
   },
 

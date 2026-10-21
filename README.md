@@ -100,6 +100,14 @@ npm run preview
    ```
 6. รีสตาร์ตแอปเพื่อเริ่มโหวตออนไลน์ แล้วเปิด “ตั้งเวลาปิดโหวต” ในหน้าผลโหวตเพื่อใส่ `VOTE_ADMIN_KEY`
 
+### เปิดรอบโหวตเดิมและ Deploy เว็บ
+
+- สำหรับฐานข้อมูลเดิม ให้รันไฟล์ใน `supabase/migrations` ที่ขึ้นต้น `20261022` ตามลำดับเวลาใน Supabase SQL Editor จนถึง `20261022000600_reopen_and_sync_voting.sql` เพื่อ sync ร้านและเปิดรอบเดิมโดยเก็บคะแนนเดิมไว้ ห้ามรัน `20261021000100_initial_schema.sql` หรือ `schema.sql` ซ้ำ เพราะจะลบตารางและคะแนน
+- สำหรับฐานข้อมูลใหม่ ให้วาง `schema.sql` หนึ่งครั้ง แล้ว `mookata_voting_setup.sql` จากนั้นรัน migrations `20261022000100` ถึง `20261022000600` ตามลำดับ
+- ตั้งค่า `VITE_SUPABASE_URL` และ `VITE_SUPABASE_ANON_KEY` ใน Environment Variables ของทั้ง Vercel และ Render แล้ว Deploy ใหม่
+- ตั้ง secrets `VOTE_IP_HASH_SECRET` และ `VOTE_ADMIN_KEY` ใน Supabase และ Deploy Edge Functions ทั้งสามรายการตามคำสั่งด้านบน
+- Vercel ใช้ `vercel.json` สำหรับ SPA routing; Render ใช้ `render.yaml` เป็น Static Site blueprint. รูปแคมเปญอยู่ใน `public/images/promotion-banner.jpg` และถูกเสิร์ฟเป็นไฟล์ static โดยไม่เรียก image API ภายนอก
+
 > `schema.sql` ลบและสร้างตารางใหม่ จึงให้รันเฉพาะกับโปรเจกต์ว่างครั้งแรกเท่านั้น ห้ามรันซ้ำบนฐานข้อมูลที่มีคะแนนจริง
 > `mookata_voting_setup.sql` สร้างตารางล็อก IP และ RPC สำหรับระบบโหวตนี้ ให้รันหลัง schema ก่อนเปิดใช้ Edge Functions
 > การจำกัดตาม IP ใช้ IP สาธารณะของเครือข่าย เครื่องหลายเครื่องบน Wi-Fi เดียวกันจึงใช้สิทธิ์ร่วมกัน และการเปลี่ยน IP อาจถูกนับเป็นอุปกรณ์ใหม่

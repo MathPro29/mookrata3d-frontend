@@ -2,11 +2,52 @@ import { isSupabaseConfigured, supabase } from '../lib/supabase';
 import type { Place, Vote, VotingSession } from '../types';
 import { initialPlaces, initialSession, mookataZoneIds } from '../data/initialData';
 
+const EXCLUDED_PLACE_IDS = new Set([
+  'place-chumphae-chang-khlan',
+  'place-chang-phueak-mahidol',
+  'place-big-big-shabu-old-city',
+  'place-pp-moo-jum-old-city',
+]);
+const EXCLUDED_ZONE_IDS = new Set(['zone-jed-yod']);
+const MAP_LINK_PLACE_IDS = new Set([
+  'place-jinbe-shabu-sushi-buffet',
+  'place-kin-mookata-chiang-mai',
+  'place-suki-tee-noi-maya-chiang-mai',
+  'place-yukata-shabu-chang-phueak',
+]);
+
 const isMookataPlace = (place: Place) =>
+  !EXCLUDED_PLACE_IDS.has(place.id) &&
+  !EXCLUDED_ZONE_IDS.has(place.zone_id) &&
   mookataZoneIds.includes(place.zone_id) &&
-  (place.category?.includes('หมูกระทะ') ||
+  (place.category?.includes('อาหาร') ||
+    place.category?.includes('หมูกระทะ') ||
     place.name.includes('หมูกระทะ') ||
     place.name_en?.toLowerCase().includes('mookata'));
+
+const includeMapLinkedPlaces = (places: Place[]) => {
+  const mergedPlaces = new Map<string, Place>();
+  places.filter(isMookataPlace).forEach(place => mergedPlaces.set(place.id, place));
+  initialPlaces
+    .filter(place => MAP_LINK_PLACE_IDS.has(place.id) && isMookataPlace(place))
+    .forEach(place => {
+      const currentPlace = mergedPlaces.get(place.id);
+      mergedPlaces.set(place.id, currentPlace ? { ...place, ...currentPlace } : place);
+    });
+  initialPlaces
+    .filter(place => place.review_url || place.price)
+    .forEach(place => {
+      const currentPlace = mergedPlaces.get(place.id);
+      if (currentPlace) {
+        mergedPlaces.set(place.id, {
+          ...currentPlace,
+          review_url: place.review_url ?? currentPlace.review_url,
+          price: place.price ?? currentPlace.price,
+        });
+      }
+    });
+  return [...mergedPlaces.values()].sort((a, b) => a.name.localeCompare(b.name, 'th'));
+};
 
 // Storage keys for local atomic fallback
 const LOCAL_VOTES_KEY = 'cm_map_local_votes_v1';
@@ -45,7 +86,15 @@ export class VotingService {
         .limit(1)
         .maybeSingle();
 
-      if (!error && data) return data as VotingSession;
+      if (!error && data) {
+        const cloudSession = data as VotingSession;
+        // Keep the seeded poll open until an admin closes it.
+        if (cloudSession.id === initialSession.id && cloudSession.status === 'active' &&
+          Date.parse(cloudSession.ends_at) < Date.now()) {
+          return { ...cloudSession, ends_at: initialSession.ends_at };
+        }
+        return cloudSession;
+      }
       if (error) throw new Error(error.message);
       return null;
     }
@@ -119,7 +168,9 @@ export class VotingService {
           .eq('session_id', sessionId);
         if (candidateError) throw new Error(candidateError.message);
         const candidateIds = (candidates || []).map(candidate => candidate.place_id);
-        if (candidateIds.length === 0) return [];
+        if (candidateIds.length === 0) {
+          return includeMapLinkedPlaces(initialPlaces.filter(isMookataPlace));
+        }
 
         const { data, error } = await supabase
           .from('places')
@@ -127,7 +178,7 @@ export class VotingService {
           .in('id', candidateIds)
           .order('name', { ascending: true });
         if (error) throw new Error(error.message);
-        return ((data || []) as Place[]).filter(isMookataPlace);
+        return includeMapLinkedPlaces((data || []) as Place[]);
       }
 
       const { data, error } = await supabase
@@ -136,7 +187,7 @@ export class VotingService {
         .order('name', { ascending: true });
 
       if (error) throw new Error(error.message);
-      return ((data || []) as Place[]).filter(isMookataPlace);
+      return includeMapLinkedPlaces((data || []) as Place[]);
     }
 
     const saved = localStorage.getItem(LOCAL_PLACES_KEY);
@@ -144,7 +195,7 @@ export class VotingService {
       try {
         const places = new Map(initialPlaces.map(place => [place.id, place]));
         (JSON.parse(saved) as Place[]).filter(isMookataPlace).forEach(place => places.set(place.id, place));
-        return [...places.values()].filter(isMookataPlace);
+        return includeMapLinkedPlaces([...places.values()]);
       } catch (e) {
         // fallback
       }

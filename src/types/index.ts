@@ -31,6 +31,8 @@ export interface Place {
   longitude: number;
   image_url: string;
   google_maps_url: string;
+  review_url?: string;
+  price?: string;
   category: string;
   verification_status: VerificationStatus;
   created_at: string;

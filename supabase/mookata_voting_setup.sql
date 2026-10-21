@@ -19,7 +19,7 @@ ON CONFLICT (id) DO UPDATE SET
   color = EXCLUDED.color;
 
 INSERT INTO public.voting_sessions (id, title, status, starts_at, ends_at)
-VALUES ('session-cm-trip-2026', 'โหวตร้านหมูกระทะเชียงใหม่', 'active', now() - interval '1 day', now() + interval '30 days')
+VALUES ('session-cm-trip-2026', 'โหวตร้านหมูกระทะเชียงใหม่', 'active', now() - interval '1 day', '2099-12-31T23:59:59Z'::timestamptz)
 ON CONFLICT (id) DO UPDATE SET
   title = EXCLUDED.title;
 
@@ -27,13 +27,8 @@ INSERT INTO public.places (id, zone_id, name, name_en, category, description, ad
 VALUES
 ('place-cool-cool-mookata', 'zone-chang-khlan', 'Cool Cool หมูกระทะ', 'Cool Cool Mookata', 'ร้านอาหาร & หมูกระทะ', 'ร้านหมูกระทะและปิ้งย่างขวัญใจคนเชียงใหม่ ตั้งอยู่บนถนนคชสาร ใกล้คูเมืองแจ่งขะต๊ำ วัตถุดิบคุณภาพดี น้ำจิ้มสูตรเด็ด บรรยากาศโปร่งสบาย เหมาะกับการสังสรรค์ยามค่ำคืน', '111/4-5 ถนนคชสาร แขวงเม็งราย ตำบลพระสิงห์/ช้างคลาน อำเภอเมืองเชียงใหม่ เชียงใหม่ 55520', 18.7816622, 98.9932611, 'https://images.unsplash.com/photo-1555396273-367ea4eb4db5?auto=format&fit=crop&w=1200&q=80', 'https://maps.app.goo.gl/JyUKKvj5a78ZZfuS9', 'verified', now()),
 ('place-moo-ood-old-city', 'zone-old-city', 'หมูอู๊ดหมูกระทะ คูเมือง', 'Moo Ood BBQ Old City', 'ร้านอาหาร & หมูกระทะ', 'บุฟเฟต์หมูกระทะพร้อมอาหารทะเลและของทานเล่น อยู่ฝั่งในคูเมืองบริเวณแจ่งหัวริน', '197 ถนนศรีภูมิ ตำบลศรีภูมิ อำเภอเมืองเชียงใหม่ เชียงใหม่ 50200', 18.795279, 98.980787, 'https://images.unsplash.com/photo-1555396273-367ea4eb4db5?auto=format&fit=crop&w=1200&q=80', 'https://maps.google.com/?q=18.795279,98.980787', 'verified', now()),
-('place-big-big-shabu-old-city', 'zone-old-city', 'Big Big Shabu คูเมือง', 'Big Big Shabu Old City', 'ร้านอาหาร & หมูกระทะ', 'ร้านหมูกระทะและชาบูบุฟเฟต์ในคูเมือง มีทั้งเตาย่างและหม้อชาบู', '2 ถนนศรีภูมิ ตำบลศรีภูมิ อำเภอเมืองเชียงใหม่ เชียงใหม่', 18.7952167, 98.9886458, 'https://images.unsplash.com/photo-1555396273-367ea4eb4db5?auto=format&fit=crop&w=1200&q=80', 'https://maps.google.com/?q=18.7952167,98.9886458', 'verified', now()),
-('place-pp-moo-jum-old-city', 'zone-old-city', 'PP หมูจุ่ม & กระทะร้อน คูเมือง', 'PP Moo Jum & Hot Pan Old City', 'ร้านอาหาร & หมูกระทะ', 'ร้านหมูกระทะและหมูจุ่มในคูเมืองด้านใน ใกล้ประตูสวนดอก', '31/2 ถนนอารักษ์ ตำบลศรีภูมิ อำเภอเมืองเชียงใหม่ เชียงใหม่', 18.7894924712, 98.9784599067, 'https://images.unsplash.com/photo-1555396273-367ea4eb4db5?auto=format&fit=crop&w=1200&q=80', 'https://maps.google.com/?q=18.7894924712,98.9784599067', 'verified', now()),
-('place-kobori-jed-yod', 'zone-jed-yod', 'โกโบริหมูกระทะ สาขาเจ็ดยอด', 'Kobori Mookata Jed Yod', 'ร้านอาหาร & หมูกระทะ', 'บุฟเฟต์หมูกระทะและซีฟู้ดย่านเจ็ดยอด มีของทานเล่นให้เลือกหลายอย่าง', '11/21 ถนนรอบเมืองเชียงใหม่ ตำบลช้างเผือก อำเภอเมืองเชียงใหม่ เชียงใหม่ 50300', 18.8110055, 98.9634693, 'https://images.unsplash.com/photo-1555396273-367ea4eb4db5?auto=format&fit=crop&w=1200&q=80', 'https://maps.google.com/?q=18.8110055,98.9634693', 'verified', now()),
-('place-fifa-mookata-jed-yod', 'zone-jed-yod', 'ฟีฟ่า หมูกระทะ เจ็ดยอด', 'FIFA Mookata Jed Yod', 'ร้านอาหาร & หมูกระทะ', 'บุฟเฟต์หมูกระทะเตาถ่านพร้อมซีฟู้ด อยู่ข้างสนามหญ้าเทียมเจ็ดยอด–อยู่เย็น', 'สนามหญ้าเทียมเจ็ดยอด–อยู่เย็น ซอย 7 ตำบลช้างเผือก อำเภอเมืองเชียงใหม่ เชียงใหม่ 50230', 18.8100203, 98.9752197, 'https://images.unsplash.com/photo-1555396273-367ea4eb4db5?auto=format&fit=crop&w=1200&q=80', 'https://maps.google.com/?q=18.8100203,98.9752197', 'verified', now()),
-('place-chang-phueak-jed-yod-4', 'zone-jed-yod', 'หมูกระทะช้างเผือก สาขา 4 เจ็ดยอด', 'Chang Phueak Mookata Branch 4 Jed Yod', 'ร้านอาหาร & หมูกระทะ', 'ร้านหมูกระทะสาขาเจ็ดยอด อยู่ถนนคันคลองชลประทานหน้าโรงแรมบายสิริมายา', '11/14 ถนนคันคลองชลประทาน ตำบลช้างเผือก อำเภอเมืองเชียงใหม่ เชียงใหม่', 18.8095501246, 98.9631698158, 'https://images.unsplash.com/photo-1555396273-367ea4eb4db5?auto=format&fit=crop&w=1200&q=80', 'https://maps.google.com/?q=18.8095501246,98.9631698158', 'verified', now()),
-('place-chang-phueak-mahidol', 'zone-chang-khlan', 'หมูกระทะช้างเผือก สาขามหิดล', 'Chang Phueak Mookata Mahidol', 'ร้านอาหาร & หมูกระทะ', 'บุฟเฟต์หมูกระทะสาขาถนนมหิดล ตรงข้ามศูนย์มาสด้า', '146 ถนนมหิดล ตำบลป่าแดด อำเภอเมืองเชียงใหม่ เชียงใหม่', 18.765631606, 98.989500124, 'https://images.unsplash.com/photo-1555396273-367ea4eb4db5?auto=format&fit=crop&w=1200&q=80', 'https://maps.google.com/?q=18.765631606,98.989500124', 'verified', now()),
-('place-chumphae-chang-khlan', 'zone-chang-khlan', 'ชุมแพเนื้อกระทะ เชียงใหม่แลนด์', 'Chum Phae Grilled Pan Chiang Mai Land', 'ร้านอาหาร & หมูกระทะ', 'ร้านเนื้อกระทะและหมูกระทะแบบสั่งเป็นชุด อยู่ในโครงการเชียงใหม่แลนด์ ซอย 4', 'เชียงใหม่แลนด์ ซอย 4 ตำบลช้างคลาน อำเภอเมืองเชียงใหม่ เชียงใหม่', 18.7673128148, 98.9962089876, 'https://images.unsplash.com/photo-1555396273-367ea4eb4db5?auto=format&fit=crop&w=1200&q=80', 'https://maps.google.com/?q=18.7673128148,98.9962089876', 'verified', now())
+('place-jinbe-shabu-sushi-buffet', 'zone-old-city', 'จินเบชาบูซูชิ บุฟเฟ่ต์', 'Jinbe Shabu Sushi Buffet', 'ร้านอาหาร & ชาบู', 'ร้านชาบูและซูชิบุฟเฟ่ต์ เพิ่มจากตำแหน่งใน Google Maps', 'เชียงใหม่', 18.7895667, 98.9784433, 'https://images.unsplash.com/photo-1555396273-367ea4eb4db5?auto=format&fit=crop&w=1200&q=80', 'https://maps.app.goo.gl/6BUjWRjehGxaZKxLA', 'verified', now()),
+('place-kin-mookata-chiang-mai', 'zone-old-city', 'กินหมูกระทะ สาขาเชียงใหม่', 'Kin Mookata Chiang Mai', 'ร้านอาหาร & หมูกระทะ', 'ร้านหมูกระทะ เพิ่มจากตำแหน่งใน Google Maps', 'เชียงใหม่', 18.7999469, 98.9914715, 'https://images.unsplash.com/photo-1555396273-367ea4eb4db5?auto=format&fit=crop&w=1200&q=80', 'https://maps.app.goo.gl/AxXAy1itoNdc9eBK6', 'verified', now())
 ON CONFLICT (id) DO UPDATE SET
   zone_id = EXCLUDED.zone_id,
   name = EXCLUDED.name,
@@ -50,17 +45,17 @@ ON CONFLICT (id) DO UPDATE SET
 DELETE FROM public.voting_session_places
 WHERE session_id = 'session-cm-trip-2026'
   AND place_id NOT IN (
-    'place-cool-cool-mookata', 'place-moo-ood-old-city', 'place-big-big-shabu-old-city',
-    'place-pp-moo-jum-old-city', 'place-kobori-jed-yod', 'place-fifa-mookata-jed-yod',
-    'place-chang-phueak-jed-yod-4', 'place-chang-phueak-mahidol', 'place-chumphae-chang-khlan'
+    'place-cool-cool-mookata', 'place-moo-ood-old-city',
+    'place-jinbe-shabu-sushi-buffet',
+    'place-kin-mookata-chiang-mai'
   );
 
 INSERT INTO public.voting_session_places (session_id, place_id)
 SELECT 'session-cm-trip-2026', id FROM public.places
 WHERE id IN (
-  'place-cool-cool-mookata', 'place-moo-ood-old-city', 'place-big-big-shabu-old-city',
-  'place-pp-moo-jum-old-city', 'place-kobori-jed-yod', 'place-fifa-mookata-jed-yod',
-  'place-chang-phueak-jed-yod-4', 'place-chang-phueak-mahidol', 'place-chumphae-chang-khlan'
+    'place-cool-cool-mookata', 'place-moo-ood-old-city',
+    'place-jinbe-shabu-sushi-buffet',
+    'place-kin-mookata-chiang-mai'
 )
 ON CONFLICT (session_id, place_id) DO NOTHING;
 
@@ -72,7 +67,7 @@ ON public.voting_session_places FOR INSERT WITH CHECK (
     JOIN public.places p ON p.id = place_id
     WHERE s.id = voting_session_places.session_id
       AND s.status = 'active' AND now() BETWEEN s.starts_at AND s.ends_at
-      AND p.zone_id IN ('zone-jed-yod', 'zone-old-city', 'zone-chang-khlan')
+      AND p.zone_id IN ('zone-old-city', 'zone-chang-khlan')
       AND p.category ILIKE '%หมูกระทะ%'
   )
 );
@@ -189,4 +184,5 @@ BEGIN
   END IF;
 END;
 $$;
+
 

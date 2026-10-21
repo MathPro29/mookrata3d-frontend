@@ -8,7 +8,8 @@ import {
   ChevronDown,
   Minus, 
   Plus, 
-  RotateCcw
+  RotateCcw,
+  Loader2
 } from 'lucide-react';
 
 // Configure Web Worker path so Vite dev server and production bundles serve it cleanly
@@ -29,8 +30,10 @@ const DEFAULT_BEARING = -15;
 export const MapContainer: React.FC = () => {
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<Map | null>(null);
+  const mapDisposeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const markersRef = useRef<{ [placeId: string]: Marker }>({});
   const [mapControlsOpen, setMapControlsOpen] = React.useState(true);
+  const [isMapLoaded, setIsMapLoaded] = React.useState(false);
 
   const {
     zones,
@@ -69,7 +72,24 @@ export const MapContainer: React.FC = () => {
 
   // Initialize Map
   useEffect(() => {
-    if (!mapContainerRef.current || mapRef.current) return;
+    if (mapDisposeTimerRef.current) {
+      clearTimeout(mapDisposeTimerRef.current);
+      mapDisposeTimerRef.current = null;
+    }
+
+    const scheduleMapDispose = (map: Map) => () => {
+      mapDisposeTimerRef.current = setTimeout(() => {
+        if (mapRef.current === map) {
+          map.remove();
+          mapRef.current = null;
+          setMapInstance(null);
+        }
+        mapDisposeTimerRef.current = null;
+      }, 0);
+    };
+
+    if (mapRef.current) return scheduleMapDispose(mapRef.current);
+    if (!mapContainerRef.current) return;
 
     let map: Map;
     try {
@@ -89,6 +109,7 @@ export const MapContainer: React.FC = () => {
       console.error('Failed to create MapLibre instance:', err);
       return;
     }
+    mapRef.current = map;
 
     // Custom attribution
     map.addControl(
@@ -104,7 +125,7 @@ export const MapContainer: React.FC = () => {
     });
 
     map.on('load', () => {
-      mapRef.current = map;
+      setIsMapLoaded(true);
       setMapInstance(map);
       map.resize();
 
@@ -319,8 +340,7 @@ export const MapContainer: React.FC = () => {
 
     return () => {
       clearTimeout(resizeTimer);
-      map.remove();
-      mapRef.current = null;
+      scheduleMapDispose(map)();
     };
   }, []);
 
@@ -406,9 +426,10 @@ export const MapContainer: React.FC = () => {
 
             <!-- Pin Head -->
             <div class="relative flex items-center justify-center">
-              <div class="pin-badge ${isTopLeader ? 'bg-amber-500 text-zinc-950 ring-2 ring-amber-300' : isSelected ? 'bg-white text-zinc-950 ring-2 ring-amber-500' : 'bg-zinc-900/90 text-white border border-zinc-700'} p-2 rounded-xl shadow-2xl flex items-center gap-1.5 backdrop-blur-md transition-all duration-200">
-                ${getCategoryIconSvg(place.category)}
-                <span class="text-xs font-bold leading-none">${placeVotes}</span>
+              <div class="pin-badge ${isTopLeader ? 'is-top-leader' : isSelected ? 'is-selected' : ''} rounded-xl shadow-2xl transition-all duration-200">
+                <img class="pin-photo" src="${place.image_url || ''}" alt="" />
+                <div class="pin-photo-fallback">${getCategoryIconSvg(place.category)}</div>
+                <span class="pin-vote-count">${placeVotes}</span>
               </div>
               ${isTopLeader ? `<div class="absolute -top-2 -right-2 bg-amber-400 text-zinc-950 text-[10px] font-extrabold px-1.5 py-0.5 rounded-full shadow border border-white">#1</div>` : ''}
               ${isSelected ? `<div class="absolute inset-0 rounded-xl marker-pulse pointer-events-none"></div>` : ''}
@@ -418,6 +439,12 @@ export const MapContainer: React.FC = () => {
             <div class="w-0 h-0 border-l-[6px] border-l-transparent border-r-[6px] border-r-transparent border-t-[8px] ${isTopLeader ? 'border-t-amber-500' : isSelected ? 'border-t-white' : 'border-t-zinc-900/90'} -mt-[1px]"></div>
           </div>
         `;
+
+        const pinImage = el.querySelector<HTMLImageElement>('.pin-photo');
+        pinImage?.addEventListener('error', () => {
+          pinImage.hidden = true;
+          el.querySelector('.pin-photo-fallback')?.classList.add('is-visible');
+        });
 
         el.addEventListener('click', (e) => {
           e.stopPropagation();
@@ -433,19 +460,32 @@ export const MapContainer: React.FC = () => {
         // Update DOM classes for existing marker
         const el = markersRef.current[place.id].getElement();
         const pinBadge = el.querySelector('.pin-badge');
-        const countSpan = el.querySelector('.pin-badge span');
+        const countSpan = el.querySelector('.pin-vote-count');
         const tooltipCount = el.querySelector('.group-hover\\:opacity-100 span:last-child');
 
         if (countSpan) countSpan.textContent = String(placeVotes);
+        const pinImage = el.querySelector<HTMLImageElement>('.pin-photo');
+        if (pinImage && pinImage.getAttribute('src') !== (place.image_url || '')) {
+          pinImage.hidden = false;
+          pinImage.src = place.image_url || '';
+        }
+        const fallback = el.querySelector('.pin-photo-fallback');
+        if (!place.image_url) {
+          if (pinImage) pinImage.hidden = true;
+          fallback?.classList.add('is-visible');
+        } else if (pinImage && pinImage.complete && pinImage.naturalWidth === 0) {
+          pinImage.hidden = true;
+          fallback?.classList.add('is-visible');
+        }
         if (tooltipCount) tooltipCount.textContent = `${placeVotes} โหวต`;
 
         if (pinBadge) {
           if (isTopLeader) {
-            pinBadge.className = 'pin-badge bg-amber-500 text-zinc-950 ring-2 ring-amber-300 p-2 rounded-xl shadow-2xl flex items-center gap-1.5 backdrop-blur-md transition-all duration-200';
+            pinBadge.className = 'pin-badge is-top-leader rounded-xl shadow-2xl transition-all duration-200';
           } else if (isSelected) {
-            pinBadge.className = 'pin-badge bg-white text-zinc-950 ring-2 ring-amber-500 p-2 rounded-xl shadow-2xl flex items-center gap-1.5 backdrop-blur-md transition-all duration-200';
+            pinBadge.className = 'pin-badge is-selected rounded-xl shadow-2xl transition-all duration-200';
           } else {
-            pinBadge.className = 'pin-badge bg-zinc-900/90 text-white border border-zinc-700 p-2 rounded-xl shadow-2xl flex items-center gap-1.5 backdrop-blur-md transition-all duration-200';
+            pinBadge.className = 'pin-badge rounded-xl shadow-2xl transition-all duration-200';
           }
         }
       }
@@ -465,6 +505,14 @@ export const MapContainer: React.FC = () => {
         className="w-full h-full absolute inset-0" 
         style={{ width: '100%', height: '100%' }}
       />
+      {!isMapLoaded && (
+        <div className="absolute inset-0 z-10 flex items-center justify-center bg-zinc-950 text-zinc-300" role="status" aria-live="polite">
+          <span className="flex items-center gap-2 rounded-xl border border-zinc-700 bg-zinc-900/90 px-4 py-3 text-sm shadow-xl">
+            <Loader2 className="h-4 w-4 animate-spin text-amber-400" />
+            กำลังโหลดแผนที่ 3 มิติ…
+          </span>
+        </div>
+      )}
 
       {/* Floating Map Controls (Right Side) */}
       <div className={`absolute top-20 flex flex-col gap-2 z-20 transition-[right] duration-200 ${mapControlsOpen ? 'right-4' : 'right-0'}`}>
