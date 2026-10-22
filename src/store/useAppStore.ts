@@ -101,9 +101,10 @@ export const useAppStore = create<AppState>((set, get) => ({
       set({ isLoading: true, loadError: null });
       const session = await VotingService.getActiveSession();
       const sessionPlaces = await VotingService.getPlaces(session?.id);
-      const votes = session && !session.final_results ? await VotingService.getVotes(session.id) : [];
+      const isFinalized = session?.status === 'completed' && Boolean(session.final_results);
+      const votes = session && !isFinalized ? await VotingService.getVotes(session.id) : [];
       let myVotePlaceId: string | null = null;
-      if (session && !session.final_results) {
+      if (session && !isFinalized) {
         try {
           myVotePlaceId = await VotingService.getCurrentUserVote(session.id, get().userId);
         } catch (error) {
@@ -131,10 +132,12 @@ export const useAppStore = create<AppState>((set, get) => ({
         }
         const [updatedPlaces, updatedVotes] = await Promise.all([
           VotingService.getPlaces(sessionId),
-          session.final_results ? Promise.resolve([]) : VotingService.getVotes(sessionId)
+          session.status === 'completed' && session.final_results
+            ? Promise.resolve([])
+            : VotingService.getVotes(sessionId)
         ]);
         let myVotePlaceId: string | null = null;
-        if (!session.final_results) {
+        if (session.status !== 'completed' || !session.final_results) {
           try {
             myVotePlaceId = await VotingService.getCurrentUserVote(sessionId, get().userId);
           } catch (error) {
@@ -153,15 +156,15 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   setCurrentView: (view) => set({ currentView: view }),
-  setVotingSession: (session) => set(state => ({
+  setVotingSession: (session) => set({
     activeSession: session,
-    ...(session.final_results || state.activeSession?.status === 'completed'
+    ...(session.status === 'completed' && session.final_results
       ? { votes: [], myVotePlaceId: null }
       : {}),
-  })),
+  }),
   finalizeVotingSession: async () => {
     const session = get().activeSession;
-    if (!session || session.final_results) return;
+    if (!session || (session.status === 'completed' && session.final_results)) return;
     const completed = await VotingService.finalizeSession(session.id);
     set({ activeSession: completed, votes: [], myVotePlaceId: null });
   },

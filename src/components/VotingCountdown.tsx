@@ -45,7 +45,7 @@ export const VotingCountdown = () => {
   const eventKey = activeSession ? `mookata-winner-${activeSession.id}-${activeSession.ends_at}` : '';
 
   useEffect(() => {
-    if (!finished || !activeSession || activeSession.final_results || isLoading || loadError || finalizingKey.current === eventKey) return;
+    if (!finished || !activeSession || (activeSession.status === 'completed' && activeSession.final_results) || isLoading || loadError || finalizingKey.current === eventKey) return;
     finalizingKey.current = eventKey;
     void finalizeVotingSession().catch(error => console.warn('Could not finalize voting session:', error));
   }, [activeSession, eventKey, finalizeVotingSession, finished, isLoading, loadError]);
@@ -71,9 +71,10 @@ export const VotingCountdown = () => {
         : `เหลือ ${formatRemaining(endTime - now)}`;
 
   const liveResult = getWinningPlaces(votes, places, activeSession.id);
-  const highestCount = activeSession.final_results?.winning_vote_count ?? liveResult.highestCount;
-  const winners = activeSession.final_results
-    ? activeSession.final_results.winners.map(winner => ({ id: winner.place_id, name: winner.name }))
+  const finalResults = activeSession.status === 'completed' ? activeSession.final_results : null;
+  const highestCount = finalResults?.winning_vote_count ?? liveResult.highestCount;
+  const winners = finalResults
+    ? finalResults.winners.map(winner => ({ id: winner.place_id, name: winner.name }))
     : liveResult.winners;
 
   const closeWinner = () => {

@@ -58,9 +58,14 @@ const LOCAL_SESSION_KEY = 'cm_map_local_session_v1';
 let broadcastChannel: BroadcastChannel | null = null;
 let activeRealtimeCleanup: (() => void) | null = null;
 let activeBroadcastCleanup: (() => void) | null = null;
+const updateSubscribers = new Set<(event: any) => void>();
 if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
   broadcastChannel = new BroadcastChannel('chiangmai_voting_realtime_channel');
 }
+
+const notifyUpdateSubscribers = (event: any) => {
+  updateSubscribers.forEach(subscriber => subscriber(event));
+};
 
 export interface VoteResult {
   success: boolean;
@@ -88,7 +93,7 @@ export class VotingService {
 
       if (!error && data) {
         const session = data as VotingSession;
-        if (!session.final_results && (session.status === 'completed' || Date.now() >= Date.parse(session.ends_at))) {
+        if (!(session.status === 'completed' && session.final_results) && (session.status === 'completed' || Date.now() >= Date.parse(session.ends_at))) {
           try { return await this.finalizeSession(session.id); }
           catch (error) { console.warn('Could not finalize voting session:', error); }
         }
@@ -103,7 +108,7 @@ export class VotingService {
     if (saved) {
       try {
         const session = JSON.parse(saved) as VotingSession;
-        if (!session.final_results && (session.status === 'completed' || Date.now() >= Date.parse(session.ends_at))) {
+        if (!(session.status === 'completed' && session.final_results) && (session.status === 'completed' || Date.now() >= Date.parse(session.ends_at))) {
           return await this.finalizeSession(session.id);
         }
         return session;
@@ -129,7 +134,7 @@ export class VotingService {
     if (session.id !== sessionId || (session.status !== 'completed' && Date.now() < Date.parse(session.ends_at))) {
       throw new Error('Voting session has not ended');
     }
-    if (session.final_results) return session;
+    if (session.status === 'completed' && session.final_results) return session;
 
     const votes = await this.getVotes(sessionId);
     const places = await this.getPlaces(sessionId);
@@ -439,7 +444,7 @@ export class VotingService {
    * Subscribe to real-time vote updates
    */
   static subscribeToUpdates(onUpdate: (event: any) => void): () => void {
-    const cleanups: (() => void)[] = [];
+    updateSubscribers.add(onUpdate);
 
     // 1. Supabase Realtime
     const client = supabase;
@@ -453,16 +458,16 @@ export class VotingService {
         const channel = client
           .channel(`realtime_votes_and_places_${crypto.randomUUID()}`)
           .on('postgres_changes', { event: '*', schema: 'public', table: 'votes' }, payload => {
-            onUpdate({ type: 'VOTE_UPDATE', payload });
+            notifyUpdateSubscribers({ type: 'VOTE_UPDATE', payload });
           })
           .on('postgres_changes', { event: '*', schema: 'public', table: 'places' }, payload => {
-            onUpdate({ type: 'PLACES_UPDATE', payload });
+            notifyUpdateSubscribers({ type: 'PLACES_UPDATE', payload });
           })
           .on('postgres_changes', { event: '*', schema: 'public', table: 'voting_session_places' }, payload => {
-            onUpdate({ type: 'PLACES_UPDATE', payload });
+            notifyUpdateSubscribers({ type: 'PLACES_UPDATE', payload });
           })
           .on('postgres_changes', { event: '*', schema: 'public', table: 'voting_sessions' }, payload => {
-            onUpdate({ type: 'SESSION_UPDATE', payload });
+            notifyUpdateSubscribers({ type: 'SESSION_UPDATE', payload });
           })
           .subscribe();
 
@@ -471,13 +476,12 @@ export class VotingService {
           activeRealtimeCleanup = null;
         };
       }
-      cleanups.push(() => activeRealtimeCleanup?.());
     }
 
     // 2. BroadcastChannel (for multi-tab real-time in demo mode)
     if (broadcastChannel && !activeBroadcastCleanup) {
       const handler = (event: MessageEvent) => {
-        onUpdate(event.data);
+        notifyUpdateSubscribers(event.data);
       };
       broadcastChannel.addEventListener('message', handler);
       activeBroadcastCleanup = () => {
@@ -485,10 +489,13 @@ export class VotingService {
         activeBroadcastCleanup = null;
       };
     }
-    if (broadcastChannel) cleanups.push(() => activeBroadcastCleanup?.());
 
     return () => {
-      cleanups.forEach(c => c());
+      updateSubscribers.delete(onUpdate);
+      if (updateSubscribers.size === 0) {
+        activeRealtimeCleanup?.();
+        activeBroadcastCleanup?.();
+      }
     };
   }
 }
