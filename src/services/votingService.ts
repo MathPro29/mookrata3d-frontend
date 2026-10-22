@@ -52,6 +52,7 @@ const includeMapLinkedPlaces = (places: Place[]) => {
 // Storage keys for local atomic fallback
 const LOCAL_VOTES_KEY = 'cm_map_local_votes_v1';
 const LOCAL_PLACES_KEY = 'cm_map_local_places_v1';
+const LOCAL_DELETED_PLACES_KEY = 'cm_map_local_deleted_places_v1';
 const LOCAL_SESSION_KEY = 'cm_map_local_session_v1';
 
 // Cross-tab real-time sync channel
@@ -209,6 +210,40 @@ export class VotingService {
     return data.session as VotingSession;
   }
 
+  static async deletePlace(adminKey: string, placeId: string): Promise<void> {
+    if (!isSupabaseConfigured || !supabase) {
+      const deleted = new Set<string>(JSON.parse(localStorage.getItem(LOCAL_DELETED_PLACES_KEY) || '[]'));
+      deleted.add(placeId);
+      localStorage.setItem(LOCAL_DELETED_PLACES_KEY, JSON.stringify([...deleted]));
+      const places = await this.getPlaces();
+      const remaining = places.filter(place => place.id !== placeId);
+      localStorage.setItem(LOCAL_PLACES_KEY, JSON.stringify(remaining));
+      localStorage.setItem(LOCAL_VOTES_KEY, JSON.stringify(
+        (JSON.parse(localStorage.getItem(LOCAL_VOTES_KEY) || '[]') as Vote[]).filter(vote => vote.place_id !== placeId),
+      ));
+      broadcastChannel?.postMessage({ type: 'PLACES_UPDATE', payload: { deleted: placeId } });
+      return;
+    }
+
+    const { data, error } = await supabase.functions.invoke('manage-voting', {
+      body: { action: 'delete_place', place_id: placeId },
+      headers: { 'x-admin-key': adminKey },
+    });
+    if (error) {
+      let message = error.message;
+      if (error.context instanceof Response) {
+        try {
+          const payload = await error.context.clone().json();
+          if (typeof payload?.error === 'string') message = payload.error;
+        } catch {
+          // Retain the Supabase error message when its response is not JSON.
+        }
+      }
+      throw new Error(message);
+    }
+    if (data?.error) throw new Error(data.error);
+  }
+
   /**
    * Retrieves all places
    */
@@ -250,12 +285,14 @@ export class VotingService {
       try {
         const places = new Map(initialPlaces.map(place => [place.id, place]));
         (JSON.parse(saved) as Place[]).filter(isMookataPlace).forEach(place => places.set(place.id, place));
-        return includeMapLinkedPlaces([...places.values()]);
+        const deleted = new Set<string>(JSON.parse(localStorage.getItem(LOCAL_DELETED_PLACES_KEY) || '[]'));
+        return includeMapLinkedPlaces([...places.values()].filter(place => !deleted.has(place.id)));
       } catch (e) {
         // fallback
       }
     }
-    return initialPlaces.filter(isMookataPlace);
+    const deleted = new Set<string>(JSON.parse(localStorage.getItem(LOCAL_DELETED_PLACES_KEY) || '[]'));
+    return initialPlaces.filter(place => isMookataPlace(place) && !deleted.has(place.id));
   }
 
   /**

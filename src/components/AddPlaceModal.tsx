@@ -51,7 +51,9 @@ export const AddPlaceModal: React.FC = () => {
     const atMatch = url.match(/@(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)/);
     const googleCoordinates = url.match(/!3d(-?\d+(?:\.\d+)?)!4d(-?\d+(?:\.\d+)?)/);
     const reversedGoogleCoordinates = url.match(/!2d(-?\d+(?:\.\d+)?)!3d(-?\d+(?:\.\d+)?)/);
-    const coordinates = atMatch || googleCoordinates;
+    // Google Maps URLs can contain both viewport center (@lat,lng) and the
+    // selected place's exact position (!3dlat!4dlng); prefer the place coords.
+    const coordinates = googleCoordinates || atMatch;
     if (coordinates || reversedGoogleCoordinates) {
       setLatitude(coordinates ? coordinates[1] : reversedGoogleCoordinates![2]);
       setLongitude(coordinates ? coordinates[2] : reversedGoogleCoordinates![1]);

@@ -1,5 +1,6 @@
-import React from 'react';
-import { ExternalLink, X } from 'lucide-react';
+import React, { useState } from 'react';
+import { AlertCircle, ExternalLink, Trash2, X } from 'lucide-react';
+import { isSupabaseConfigured } from '../lib/supabase';
 import { useAppStore } from '../store/useAppStore';
 import type { Place } from '../types';
 
@@ -20,11 +21,32 @@ const getPlaceMapsUrl = (place: Pick<Place, 'google_maps_url' | 'name' | 'addres
 };
 
 export const PlaceDetailPanel: React.FC = () => {
-  const { places, selectedPlaceId, selectPlace } = useAppStore();
+  const { places, selectedPlaceId, selectPlace, deletePlace } = useAppStore();
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
   if (!selectedPlaceId) return null;
 
   const place = places.find(item => item.id === selectedPlaceId);
   if (!place) return null;
+
+  const handleDelete = async () => {
+    if (!window.confirm(`ต้องการลบร้าน “${place.name}” ใช่ไหม? คะแนนและตัวเลือกโหวตของร้านนี้จะถูกลบด้วย`)) return;
+    const adminKey = isSupabaseConfigured ? window.prompt('กรอกรหัสผู้ดูแลเพื่อลบร้าน') : '';
+    if (adminKey === null) return;
+    if (isSupabaseConfigured && !adminKey.trim()) {
+      setDeleteError('กรุณากรอกรหัสผู้ดูแล');
+      return;
+    }
+    setDeleteError(null);
+    setIsDeleting(true);
+    try {
+      await deletePlace(adminKey, place.id);
+    } catch (error) {
+      setDeleteError(error instanceof Error ? error.message : 'ลบร้านไม่สำเร็จ กรุณาลองอีกครั้ง');
+    } finally {
+      setIsDeleting(false);
+    }
+  };
 
   return (
     <div className="fixed lg:absolute bottom-0 right-0 left-0 lg:left-auto lg:top-18 lg:bottom-4 lg:right-4 w-full lg:w-[420px] max-h-[min(75dvh,640px)] lg:max-h-none rounded-t-3xl lg:rounded-2xl bg-zinc-950/95 border border-zinc-800 shadow-2xl backdrop-blur-2xl z-40 flex flex-col overflow-hidden animate-in slide-in-from-bottom-6 lg:slide-in-from-right-6 duration-300">
@@ -83,6 +105,11 @@ export const PlaceDetailPanel: React.FC = () => {
             className="block h-auto w-full rounded-xl border border-zinc-800"
           />
         )}
+
+        {deleteError && <p role="alert" className="m-0 flex items-center gap-2 text-xs text-rose-300"><AlertCircle className="h-4 w-4 shrink-0" />{deleteError}</p>}
+        <button type="button" onClick={() => void handleDelete()} disabled={isDeleting} className="flex w-full items-center justify-center gap-2 rounded-xl border border-rose-500/40 bg-rose-500/10 px-4 py-3 text-sm font-semibold text-rose-300 transition hover:bg-rose-500/20 disabled:opacity-50">
+          <Trash2 className="h-4 w-4" />{isDeleting ? 'กำลังลบร้าน…' : 'ลบร้าน'}
+        </button>
       </div>
     </div>
   );

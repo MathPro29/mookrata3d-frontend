@@ -5,8 +5,10 @@ const isGoogleMapsHost = (host: string) =>
 
 const getCoordinates = (url: URL) => {
   const text = url.href;
-  const match = text.match(/@(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)/)
-    || text.match(/!3d(-?\d+(?:\.\d+)?)!4d(-?\d+(?:\.\d+)?)/)
+  // Prefer the place's coordinates over @lat,lng, which is often only the
+  // current viewport center when both formats occur in one Maps URL.
+  const match = text.match(/!3d(-?\d+(?:\.\d+)?)!4d(-?\d+(?:\.\d+)?)/)
+    || text.match(/@(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)/)
     || url.search.match(/[?&](?:q|query)=(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)/);
   const reversedMatch = text.match(/!2d(-?\d+(?:\.\d+)?)!3d(-?\d+(?:\.\d+)?)/);
   if (!match && !reversedMatch) return null;

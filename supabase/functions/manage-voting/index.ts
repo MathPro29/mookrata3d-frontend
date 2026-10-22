@@ -13,6 +13,15 @@ Deno.serve(async request => {
 
   try {
     const body = await request.json();
+    const admin = createAdminClient();
+    if (body.action === 'delete_place') {
+      if (!isValidIdentifier(body.place_id)) return jsonResponse({ error: 'ร้านที่ต้องการลบไม่ถูกต้อง' }, 400);
+      const { data, error } = await admin.from('places').delete().eq('id', body.place_id).select('id').maybeSingle();
+      if (error) return jsonResponse({ error: error.message }, 500);
+      if (!data) return jsonResponse({ error: 'ไม่พบร้านนี้ หรือร้านถูกลบไปแล้ว' }, 404);
+      return jsonResponse({ success: true });
+    }
+
     if (!isValidIdentifier(body.session_id) || !['set_end_time', 'close_now', 'reopen'].includes(body.action)) {
       return jsonResponse({ error: 'คำสั่งหรือรอบโหวตไม่ถูกต้อง' }, 400);
     }
@@ -22,7 +31,6 @@ Deno.serve(async request => {
       return jsonResponse({ error: 'เวลาปิดโหวตต้องอยู่ในอนาคต' }, 400);
     }
 
-    const admin = createAdminClient();
     if (body.action === 'reopen') {
       const { data, error } = await admin.rpc('start_new_vote_round', {
         p_session_id: body.session_id,

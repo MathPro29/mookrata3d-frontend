@@ -62,6 +62,7 @@ interface AppState {
   castVote: (placeId: string) => Promise<{ success: boolean; action: string; message?: string }>;
   removeVote: (placeId: string) => Promise<{ success: boolean; message?: string }>;
   addPlace: (newPlace: Omit<Place, 'id' | 'created_at'>) => Promise<Place>;
+  deletePlace: (adminKey: string, placeId: string) => Promise<void>;
   resetCamera: () => void;
 
   // Computed helpers
@@ -358,6 +359,15 @@ export const useAppStore = create<AppState>((set, get) => ({
     const created = await VotingService.addPlace(newPlace);
     set(state => ({ places: [...state.places, created] }));
     return created;
+  },
+
+  deletePlace: async (adminKey, placeId) => {
+    await VotingService.deletePlace(adminKey, placeId);
+    set(state => ({
+      places: state.places.filter(place => place.id !== placeId),
+      votes: state.votes.filter(vote => vote.place_id !== placeId),
+      selectedPlaceId: state.selectedPlaceId === placeId ? null : state.selectedPlaceId,
+    }));
   },
 
   resetCamera: () => {
