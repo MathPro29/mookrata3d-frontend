@@ -34,12 +34,13 @@ export const VotingResultsView: React.FC = () => {
   );
   const topThree = leaderboard.slice(0, 3);
 
-  const handleVote = async () => {
-    if (!selectedPlaceId || !isSessionActive || isVoting) return;
+  const handleVote = async (placeId = selectedPlaceId) => {
+    if (!placeId || !isSessionActive || isVoting) return;
+    setSelectedPlaceId(placeId);
     setIsVoting(true);
     setMessage('');
     try {
-      const result = await castVote(selectedPlaceId);
+      const result = await castVote(placeId);
       setMessage(result.success
         ? result.action === 'NO_CHANGE' ? 'คุณโหวตร้านนี้ไว้แล้ว' : 'บันทึกคะแนนโหวตแล้ว'
         : result.message || 'บันทึกคะแนนไม่สำเร็จ กรุณาลองอีกครั้ง');
@@ -100,7 +101,7 @@ export const VotingResultsView: React.FC = () => {
                   {voted ? (
                     <button onClick={() => void handleRemoveVote(entry.place.id)} disabled={!isSessionActive || isVoting} className="h-12 flex-1 rounded-xl border border-rose-300 bg-white text-sm font-bold text-rose-700 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50">{isVoting ? 'กำลังดำเนินการ…' : 'ถอนโหวตของฉัน'}</button>
                   ) : (
-                    <button onClick={() => setSelectedPlaceId(entry.place.id)} aria-pressed={selected} className={`h-12 flex-1 rounded-xl text-sm font-bold transition ${selected ? 'bg-zinc-950 text-white' : 'bg-zinc-100 text-zinc-950 hover:bg-zinc-200'}`}>{selected ? 'เลือกแล้ว' : 'เลือกร้านนี้'}</button>
+                    <button onClick={() => void handleVote(entry.place.id)} disabled={!isSessionActive || isVoting} aria-pressed={selected} className={`h-12 flex-1 rounded-xl text-sm font-bold transition disabled:cursor-not-allowed disabled:opacity-50 ${selected ? 'bg-zinc-950 text-white' : 'bg-zinc-100 text-zinc-950 hover:bg-zinc-200'}`}>{isVoting && selected ? 'กำลังบันทึก…' : selected ? 'เลือกแล้ว' : 'โหวตร้านนี้'}</button>
                   )}
                   <button onClick={() => handleInspectOnMap(entry.place.id)} aria-label={`ดู ${entry.place.name} บนแผนที่`} className="flex h-12 w-12 items-center justify-center rounded-xl border border-zinc-200 text-zinc-700 hover:bg-zinc-100"><Compass className="h-5 w-5" /></button>
                 </div>
@@ -121,7 +122,7 @@ export const VotingResultsView: React.FC = () => {
                   <div className="truncate text-xs text-zinc-500">{entry.zone?.name_th || 'เชียงใหม่'} · {entry.votes_count} โหวต</div>
                 </div>
                 {voted ? <button onClick={() => void handleRemoveVote(entry.place.id)} disabled={!isSessionActive || isVoting} className="h-11 shrink-0 rounded-xl border border-rose-300 px-3 text-sm font-bold text-rose-700 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50">ถอนโหวต</button>
-                  : <button onClick={() => setSelectedPlaceId(entry.place.id)} aria-pressed={selectedPlaceId === entry.place.id} className={`h-11 shrink-0 rounded-xl px-4 text-sm font-bold ${selectedPlaceId === entry.place.id ? 'bg-zinc-950 text-white' : 'border border-zinc-300 text-zinc-800'}`}>{selectedPlaceId === entry.place.id ? 'เลือกแล้ว' : 'เลือก'}</button>}
+                  : <button onClick={() => void handleVote(entry.place.id)} disabled={!isSessionActive || isVoting} aria-pressed={selectedPlaceId === entry.place.id} className={`h-11 shrink-0 rounded-xl px-4 text-sm font-bold disabled:cursor-not-allowed disabled:opacity-50 ${selectedPlaceId === entry.place.id ? 'bg-zinc-950 text-white' : 'border border-zinc-300 text-zinc-800'}`}>{isVoting && selectedPlaceId === entry.place.id ? 'กำลังบันทึก…' : selectedPlaceId === entry.place.id ? 'เลือกแล้ว' : 'โหวต'}</button>}
               </div>;
             })}
             {filteredEntries.length === 0 && <p className="m-0 px-4 py-10 text-center text-sm text-zinc-500">ไม่พบร้านจากตัวกรองนี้</p>}
