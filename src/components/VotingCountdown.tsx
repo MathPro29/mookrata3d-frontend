@@ -93,7 +93,8 @@ export const VotingCountdown = () => {
       <span className="truncate tabular-nums">{countdown}</span>
     </button>
 
-    {showWinner && <div className="fixed inset-0 z-50 flex items-center justify-center bg-zinc-950/75 p-4 backdrop-blur-sm" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) closeWinner(); }}>
+    {showWinner && <div className="fixed inset-0 z-50 flex items-center justify-center overflow-hidden bg-zinc-950/75 p-4 backdrop-blur-sm" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) closeWinner(); }}>
+      <div className="winner-confetti" aria-hidden="true">{Array.from({ length: 36 }, (_, index) => <i key={index} style={{ left: `${(index * 37) % 100}%`, animationDelay: `-${(index * 11) % 38 / 10}s`, backgroundColor: `hsl(${index * 47 % 360} 90% 58%)` }} />)}</div>
       <section role="dialog" aria-modal="true" aria-labelledby="winner-title" className="winner-popup relative w-full max-w-md rounded-3xl bg-white px-6 pb-6 pt-8 text-center text-zinc-950 shadow-2xl sm:px-8">
         <button onClick={closeWinner} aria-label="ปิดผลโหวต" className="absolute right-4 top-4 flex h-10 w-10 items-center justify-center rounded-xl text-zinc-500 hover:bg-zinc-100"><X className="h-5 w-5" /></button>
         <div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-2xl bg-amber-100 text-amber-600"><Trophy className="h-8 w-8" /></div>

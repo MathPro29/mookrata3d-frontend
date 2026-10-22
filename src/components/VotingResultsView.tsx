@@ -85,7 +85,7 @@ export const VotingResultsView: React.FC = () => {
           </div>
         </div>
 
-        {!isSessionActive && <p role="status" className="mt-5 rounded-xl border border-zinc-300 bg-white px-4 py-3 text-sm text-zinc-700">{activeSession ? 'รอบโหวตสิ้นสุดแล้ว คะแนนถูกล้างก่อนเริ่มรอบใหม่ ดูร้านที่ชนะได้จากตัวนับเวลาด้านบน' : 'ยังไม่มีรอบโหวตที่เปิดอยู่'}</p>}
+        {!isSessionActive && <p role="status" className="mt-5 rounded-xl border border-zinc-300 bg-white px-4 py-3 text-sm text-zinc-700">{activeSession ? 'รอบโหวตสิ้นสุดแล้ว คะแนนรอบนี้ยังแสดงอยู่ และจะเริ่มนับใหม่เมื่อเปิดโหวตรอบถัดไป' : 'ยังไม่มีรอบโหวตที่เปิดอยู่'}</p>}
         {message && <p role="status" aria-live="polite" className="mt-5 rounded-xl border border-zinc-300 bg-white px-4 py-3 text-sm font-semibold text-zinc-900">{message}</p>}
 
         <section className="mt-9" aria-labelledby="top-three-title">

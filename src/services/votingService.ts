@@ -151,9 +151,7 @@ export class VotingService {
         total_votes: votes.length,
       },
     };
-    const savedVotes: Vote[] = JSON.parse(localStorage.getItem(LOCAL_VOTES_KEY) || '[]');
     localStorage.setItem(LOCAL_SESSION_KEY, JSON.stringify(completed));
-    localStorage.setItem(LOCAL_VOTES_KEY, JSON.stringify(savedVotes.filter(vote => vote.session_id !== sessionId)));
     broadcastChannel?.postMessage({ type: 'SESSION_UPDATE' });
     return completed;
   }

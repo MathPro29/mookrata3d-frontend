@@ -101,10 +101,9 @@ export const useAppStore = create<AppState>((set, get) => ({
       set({ isLoading: true, loadError: null });
       const session = await VotingService.getActiveSession();
       const sessionPlaces = await VotingService.getPlaces(session?.id);
-      const isFinalized = session?.status === 'completed' && Boolean(session.final_results);
-      const votes = session && !isFinalized ? await VotingService.getVotes(session.id) : [];
+      const votes = session ? await VotingService.getVotes(session.id) : [];
       let myVotePlaceId: string | null = null;
-      if (session && !isFinalized) {
+      if (session && session.status !== 'completed') {
         try {
           myVotePlaceId = await VotingService.getCurrentUserVote(session.id, get().userId);
         } catch (error) {
@@ -132,9 +131,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         }
         const [updatedPlaces, updatedVotes] = await Promise.all([
           VotingService.getPlaces(sessionId),
-          session.status === 'completed' && session.final_results
-            ? Promise.resolve([])
-            : VotingService.getVotes(sessionId)
+          VotingService.getVotes(sessionId)
         ]);
         let myVotePlaceId: string | null = null;
         if (session.status !== 'completed' || !session.final_results) {
@@ -158,15 +155,13 @@ export const useAppStore = create<AppState>((set, get) => ({
   setCurrentView: (view) => set({ currentView: view }),
   setVotingSession: (session) => set({
     activeSession: session,
-    ...(session.status === 'completed' && session.final_results
-      ? { votes: [], myVotePlaceId: null }
-      : {}),
+    ...(session.status === 'completed' ? { myVotePlaceId: null } : {}),
   }),
   finalizeVotingSession: async () => {
     const session = get().activeSession;
     if (!session || (session.status === 'completed' && session.final_results)) return;
     const completed = await VotingService.finalizeSession(session.id);
-    set({ activeSession: completed, votes: [], myVotePlaceId: null });
+    set({ activeSession: completed, myVotePlaceId: null });
   },
   toggleQrModal: (open, placeId = null) => {
     set((state) => ({

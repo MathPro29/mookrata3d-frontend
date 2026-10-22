@@ -11,6 +11,21 @@
 
 @media (prefers-reduced-motion: reduce) {
   .winner-popup { animation: none; }
+  .winner-confetti i { animation: none; opacity: 0; }
+}
+
+.winner-confetti { position: fixed; inset: 0; pointer-events: none; overflow: hidden; }
+.winner-confetti i {
+  position: absolute;
+  top: -1rem;
+  width: 0.55rem;
+  height: 0.8rem;
+  border-radius: 2px;
+  background: #f59e0b;
+  animation: confetti-fall 3.8s linear infinite;
+}
+@keyframes confetti-fall {
+  to { transform: translate3d(5rem, 110vh, 0) rotate(720deg); }
 }
 
 @layer base {

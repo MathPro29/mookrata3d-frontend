@@ -55,7 +55,7 @@ export const VotingSessionControls: React.FC<VotingSessionControlsProps> = ({ is
         action !== 'close_now' ? new Date(endsAt).toISOString() : undefined,
       );
       setVotingSession(updated);
-      setMessage(action === 'close_now' ? 'ปิดโหวตและล้างคะแนนแล้ว' : action === 'reopen' ? 'เปิดโหวตรอบใหม่แล้ว คะแนนเริ่มจากศูนย์' : 'บันทึกเวลาปิดโหวตแล้ว');
+      setMessage(action === 'close_now' ? 'ปิดโหวตแล้ว คะแนนจะถูกเก็บไว้จนเริ่มรอบใหม่' : action === 'reopen' ? 'เปิดโหวตรอบใหม่แล้ว คะแนนเริ่มจากศูนย์' : 'บันทึกเวลาปิดโหวตแล้ว');
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'บันทึกไม่สำเร็จ กรุณาลองอีกครั้ง');
     } finally {
