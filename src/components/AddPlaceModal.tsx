@@ -19,54 +19,54 @@ export const AddPlaceModal: React.FC = () => {
   } = useAppStore();
 
   const [name, setName] = useState('');
-  const [nameEn, setNameEn] = useState('');
-  const [zoneId, setZoneId] = useState(zones[0]?.id || 'zone-old-city');
-  const [category, setCategory] = useState('ร้านอาหาร & หมูกระทะ');
   const [price, setPrice] = useState('');
   const [isThaiHelpsThai, setIsThaiHelpsThai] = useState(false);
   const [googleMapsUrl, setGoogleMapsUrl] = useState('');
   const [latitude, setLatitude] = useState('');
   const [longitude, setLongitude] = useState('');
-  const [address, setAddress] = useState('');
-  const [description, setDescription] = useState('');
-  const [imageUrl, setImageUrl] = useState('');
-  const [status, setStatus] = useState<'verified' | 'pending_verification'>('verified');
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isResolvingLink, setIsResolvingLink] = useState(false);
 
   if (!isAddPlaceOpen) return null;
 
+  const normalizeMapsUrl = (value: string) => {
+    const markdownLink = value.trim().match(/^\[[^\]]*\]\((https?:\/\/[^\s)]+)\)$/i);
+    return (markdownLink?.[1] ?? value.trim()).replace(/[<>]/g, '');
+  };
+
   // Auto-parse coordinates from Google Maps URLs like @18.7816,98.9932 or ?q=18.7816,98.9932
   const handleUrlChange = (val: string) => {
-    setGoogleMapsUrl(val);
+    const url = normalizeMapsUrl(val);
+    setGoogleMapsUrl(url);
+    setLatitude('');
+    setLongitude('');
+    setError(null);
     try {
-      const pathName = new URL(val).pathname.match(/\/maps\/place\/([^/]+)/)?.[1];
+      const pathName = new URL(url).pathname.match(/\/maps\/place\/([^/]+)/)?.[1];
       if (pathName && !name) setName(decodeURIComponent(pathName.replaceAll('+', ' ')));
     } catch {
       // Let the user finish pasting an incomplete URL.
     }
-    const atMatch = val.match(/@(-?\d+\.\d+),(-?\d+\.\d+)/);
-    const googleCoordinates = val.match(/!3d(-?\d+\.\d+)!4d(-?\d+\.\d+)/);
-    const reversedGoogleCoordinates = val.match(/!2d(-?\d+\.\d+)!3d(-?\d+\.\d+)/);
+    const atMatch = url.match(/@(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)/);
+    const googleCoordinates = url.match(/!3d(-?\d+(?:\.\d+)?)!4d(-?\d+(?:\.\d+)?)/);
+    const reversedGoogleCoordinates = url.match(/!2d(-?\d+(?:\.\d+)?)!3d(-?\d+(?:\.\d+)?)/);
     const coordinates = atMatch || googleCoordinates;
     if (coordinates || reversedGoogleCoordinates) {
       setLatitude(coordinates ? coordinates[1] : reversedGoogleCoordinates![2]);
       setLongitude(coordinates ? coordinates[2] : reversedGoogleCoordinates![1]);
-      setStatus('verified');
       return;
     }
-    const qMatch = val.match(/q=(-?\d+\.\d+),(-?\d+\.\d+)/);
+    const qMatch = url.match(/[?&](?:q|query)=(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)/);
     if (qMatch) {
       setLatitude(qMatch[1]);
       setLongitude(qMatch[2]);
-      setStatus('verified');
       return;
     }
   };
 
   const handleUrlBlur = async () => {
-    if (!googleMapsUrl || latitude || longitude || !/https:\/\/(maps\.app\.goo\.gl|goo\.gl)\//i.test(googleMapsUrl)) return;
+    if (!googleMapsUrl || (latitude && longitude) || !/https:\/\/(maps\.app\.goo\.gl|goo\.gl)\//i.test(googleMapsUrl)) return;
     const requestedUrl = googleMapsUrl;
     setIsResolvingLink(true);
     try {
@@ -76,9 +76,11 @@ export const AddPlaceModal: React.FC = () => {
       setLatitude(String(resolved.latitude));
       setLongitude(String(resolved.longitude));
       if (resolved.name && !name) setName(resolved.name);
-      setStatus('verified');
     } catch (err) {
-      setError(err instanceof Error ? `${err.message} (กรอกพิกัดเองได้)` : 'ถอดลิงก์ไม่สำเร็จ กรุณากรอกพิกัดเอง');
+      const reason = err instanceof Error ? err.message : '';
+      setError(reason.includes('Failed to send a request')
+        ? 'เชื่อมต่อระบบอ่านลิงก์สั้นไม่ได้ กรุณาตรวจว่าได้ deploy Edge Function resolve-google-maps-link แล้ว หรือลองวางลิงก์ Google Maps แบบเต็ม'
+        : reason || 'ถอดลิงก์ไม่สำเร็จ กรุณาตรวจสอบลิงก์ Google Maps');
     } finally {
       setIsResolvingLink(false);
     }
@@ -109,36 +111,36 @@ export const AddPlaceModal: React.FC = () => {
       return;
     }
 
-    // If coordinates are missing, set status to pending_verification and fallback to zone center
-    let finalStatus: 'verified' | 'pending_verification' = status;
-    if (isNaN(lat) || isNaN(lng)) {
-      const selectedZone = zones.find(z => z.id === zoneId);
-      if (selectedZone) {
-        lat = selectedZone.center[1];
-        lng = selectedZone.center[0];
-        finalStatus = 'pending_verification';
-      } else {
-        setError('กรุณาระบุพิกัด Latitude และ Longitude ที่ถูกต้อง');
-        return;
-      }
+    if (!Number.isFinite(lat) || !Number.isFinite(lng) || lat < -90 || lat > 90 || lng < -180 || lng > 180) {
+      setError('อ่านพิกัดจากลิงก์ไม่ได้ กรุณาใช้ลิงก์ Google Maps ของสถานที่ที่ถูกต้อง');
+      return;
+    }
+
+    const zoneId = zones.reduce((nearest, zone) => {
+      const distance = (zone.center[1] - lat) ** 2 + (zone.center[0] - lng) ** 2;
+      const nearestDistance = (nearest.center[1] - lat) ** 2 + (nearest.center[0] - lng) ** 2;
+      return distance < nearestDistance ? zone : nearest;
+    }, zones[0])?.id;
+    if (!zoneId) {
+      setError('ไม่พบข้อมูลโซนสำหรับปักหมุด');
+      return;
     }
 
     try {
       setIsSubmitting(true);
       const created = await addPlace({
         name: name.trim(),
-        name_en: nameEn.trim() || undefined,
         zone_id: zoneId,
-        category,
+        category: 'ร้านอาหาร & หมูกระทะ',
         price: price.trim(),
         is_thai_helps_thai: isThaiHelpsThai,
         google_maps_url: googleMapsUrl.trim() || `https://maps.google.com/?q=${lat},${lng}`,
         latitude: lat,
         longitude: lng,
-        address: address.trim() || 'อำเภอเมือง จังหวัดเชียงใหม่',
-        description: description.trim() || `ร้านหมูกระทะในโซน ${zones.find(z => z.id === zoneId)?.name_th}`,
-        image_url: imageUrl.trim() || 'https://images.unsplash.com/photo-1555396273-367ea4eb4db5?auto=format&fit=crop&w=1200&q=80',
-        verification_status: finalStatus
+        address: 'อำเภอเมือง จังหวัดเชียงใหม่',
+        description: `ร้านหมูกระทะในโซน ${zones.find(z => z.id === zoneId)?.name_th}`,
+        image_url: 'https://images.unsplash.com/photo-1555396273-367ea4eb4db5?auto=format&fit=crop&w=1200&q=80',
+        verification_status: 'verified'
       });
 
       setIsSubmitting(false);
@@ -212,53 +214,6 @@ export const AddPlaceModal: React.FC = () => {
             </fieldset>
           </div>
 
-          {/* English Name */}
-          <div>
-            <label className="block font-semibold text-zinc-300 mb-1">
-              ชื่อภาษาอังกฤษ (ถ้ามี)
-            </label>
-            <input
-              type="text"
-              placeholder="e.g. Wat Umong, Chang Phueak Mookata..."
-              value={nameEn}
-              onChange={(e) => setNameEn(e.target.value)}
-              className="w-full bg-zinc-900 text-zinc-100 px-3 py-2 rounded-xl border border-zinc-700 focus:outline-none focus:border-amber-500"
-            />
-          </div>
-
-          {/* Zone & Category Grid */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div>
-              <label className="block font-semibold text-zinc-300 mb-1">
-                โซนที่ตั้ง (Zone) *
-              </label>
-              <select
-                value={zoneId}
-                onChange={(e) => setZoneId(e.target.value)}
-                className="w-full bg-zinc-900 text-zinc-100 px-3 py-2 rounded-xl border border-zinc-700 focus:outline-none focus:border-amber-500"
-              >
-                {zones.map(z => (
-                  <option key={z.id} value={z.id}>
-                    {z.name_th} ({z.name_en})
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div>
-              <label className="block font-semibold text-zinc-300 mb-1">
-                หมวดหมู่สถานที่ *
-              </label>
-              <select
-                value={category}
-                onChange={(e) => setCategory(e.target.value)}
-                className="w-full bg-zinc-900 text-zinc-100 px-3 py-2 rounded-xl border border-zinc-700 focus:outline-none focus:border-amber-500"
-              >
-                <option value="ร้านอาหาร & หมูกระทะ">ร้านหมูกระทะ</option>
-              </select>
-            </div>
-          </div>
-
           {/* Google Maps URL */}
           <div>
             <div className="flex items-center justify-between mb-1">
@@ -277,70 +232,6 @@ export const AddPlaceModal: React.FC = () => {
               className="w-full bg-zinc-900 text-zinc-100 px-3 py-2 rounded-xl border border-zinc-700 focus:outline-none focus:border-amber-500 font-mono text-[11px]"
             />
             {isResolvingLink && <p className="mb-0 mt-1 text-[10px] text-amber-300" role="status">กำลังอ่านพิกัดจากลิงก์…</p>}
-          </div>
-
-          {/* Coordinates Grid */}
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block font-semibold text-zinc-300 mb-1">
-                Latitude (ละติจูด)
-              </label>
-              <input
-                type="text"
-                placeholder="18.7885"
-                value={latitude}
-                onChange={(e) => setLatitude(e.target.value)}
-                className="w-full bg-zinc-900 text-zinc-100 px-3 py-2 rounded-xl border border-zinc-700 focus:outline-none focus:border-amber-500 font-mono"
-              />
-            </div>
-            <div>
-              <label className="block font-semibold text-zinc-300 mb-1">
-                Longitude (ลองจิจูด)
-              </label>
-              <input
-                type="text"
-                placeholder="98.9818"
-                value={longitude}
-                onChange={(e) => setLongitude(e.target.value)}
-                className="w-full bg-zinc-900 text-zinc-100 px-3 py-2 rounded-xl border border-zinc-700 focus:outline-none focus:border-amber-500 font-mono"
-              />
-            </div>
-          </div>
-
-          {/* Address */}
-          <div>
-            <label className="block font-semibold text-zinc-300 mb-1">ที่อยู่</label>
-            <input
-              type="text"
-              placeholder="ถนน, แขวง, ตำบล..."
-              value={address}
-              onChange={(e) => setAddress(e.target.value)}
-              className="w-full bg-zinc-900 text-zinc-100 px-3 py-2 rounded-xl border border-zinc-700 focus:outline-none focus:border-amber-500"
-            />
-          </div>
-
-          {/* Description */}
-          <div>
-            <label className="block font-semibold text-zinc-300 mb-1">คำอธิบาย</label>
-            <textarea
-              rows={2}
-              placeholder="จุดเด่น เมนูแนะนำ หรือบรรยากาศ..."
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              className="w-full bg-zinc-900 text-zinc-100 px-3 py-2 rounded-xl border border-zinc-700 focus:outline-none focus:border-amber-500"
-            />
-          </div>
-
-          {/* Image URL */}
-          <div>
-            <label className="block font-semibold text-zinc-300 mb-1">ลิงก์รูปภาพ (Image URL)</label>
-            <input
-              type="url"
-              placeholder="https://images.unsplash.com/..."
-              value={imageUrl}
-              onChange={(e) => setImageUrl(e.target.value)}
-              className="w-full bg-zinc-900 text-zinc-100 px-3 py-2 rounded-xl border border-zinc-700 focus:outline-none focus:border-amber-500 text-[11px]"
-            />
           </div>
 
           {/* Submit CTA */}
