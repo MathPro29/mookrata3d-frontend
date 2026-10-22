@@ -33,7 +33,7 @@ export const PlaceDetailPanel: React.FC = () => {
   if (!place) return null;
 
   return (
-    <div className="fixed lg:absolute bottom-0 right-0 left-0 lg:left-auto lg:top-18 lg:bottom-4 lg:right-4 w-full lg:w-[420px] rounded-t-3xl lg:rounded-2xl bg-zinc-950/95 border border-zinc-800 shadow-2xl backdrop-blur-2xl z-40 flex flex-col overflow-hidden animate-in slide-in-from-bottom-6 lg:slide-in-from-right-6 duration-300">
+    <div className="fixed lg:absolute bottom-0 right-0 left-0 lg:left-auto lg:top-18 lg:bottom-4 lg:right-4 w-full lg:w-[420px] max-h-[min(75dvh,640px)] lg:max-h-none rounded-t-3xl lg:rounded-2xl bg-zinc-950/95 border border-zinc-800 shadow-2xl backdrop-blur-2xl z-40 flex flex-col overflow-hidden animate-in slide-in-from-bottom-6 lg:slide-in-from-right-6 duration-300">
       <div className="relative h-40 sm:h-48 w-full flex-shrink-0 overflow-hidden bg-zinc-900">
         <img src={place.image_url} alt={place.name} className="w-full h-full object-cover" />
         <div className="absolute inset-0 bg-gradient-to-t from-zinc-950 via-zinc-950/20 to-transparent" />
@@ -49,7 +49,7 @@ export const PlaceDetailPanel: React.FC = () => {
         </h2>
       </div>
 
-      <div className="p-4 sm:p-5 space-y-3">
+      <div className="p-4 pb-[max(1rem,env(safe-area-inset-bottom))] sm:p-5 space-y-3 overflow-y-auto">
         <div className="flex items-center justify-between rounded-xl bg-zinc-900 border border-zinc-800 px-4 py-3">
           <span className="text-sm font-semibold text-zinc-300">ราคา</span>
           <span className="text-sm font-bold text-amber-300">{place.price || 'ยังไม่ระบุ'}</span>

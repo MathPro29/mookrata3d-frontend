@@ -1,153 +1,35 @@
 import React from 'react';
 import { useAppStore } from '../store/useAppStore';
-import { 
-  PlusCircle, 
-  Menu, 
-  Compass, 
-  ChevronDown,
-  QrCode,
-  BarChart3,
-  Map as MapIcon
-} from 'lucide-react';
+import { PlusCircle, Menu, Compass, QrCode, Map as MapIcon, Trophy } from 'lucide-react';
 
 export const Navbar: React.FC = () => {
-  const {
-    zones,
-    hiddenZoneIds,
-    selectedZoneId,
-    selectZone,
-    is3D,
-    toggle3D,
-    toggleAddPlace,
-    toggleSidebar,
-    currentView,
-    setCurrentView,
-    toggleQrModal,
-    votes
-  } = useAppStore();
+  const { currentView, setCurrentView, toggleQrModal, toggleAddPlace, toggleSidebar, isSidebarOpen, votes } = useAppStore();
 
   return (
-    <header className="absolute top-0 left-0 right-0 h-16 z-30 px-3 sm:px-6 grid grid-cols-[1fr_auto_1fr] items-center pointer-events-none">
-      {/* Left: Brand & Mobile Menu Toggle */}
-      <div className="flex items-center gap-3 pointer-events-auto">
-        {/* Mobile Sidebar Toggle (Only in Map View) */}
-        {currentView === 'map' && (
-          <button
-            onClick={() => toggleSidebar()}
-            className="lg:hidden flex items-center justify-center w-9 h-9 rounded-xl bg-zinc-900/90 text-zinc-200 border border-zinc-800 shadow-lg backdrop-blur-md hover:bg-zinc-800 transition"
-            title="เปิดเมนูโซน"
-          >
-            <Menu className="w-4 h-4" />
+    <header className="pointer-events-none absolute inset-x-0 top-0 z-30 px-3 pt-[max(0.75rem,env(safe-area-inset-top))] sm:px-6">
+      <div className="flex items-center justify-between gap-2">
+        <div className="pointer-events-auto flex min-w-0 items-center gap-2">
+          {currentView === 'map' && <button onClick={() => toggleSidebar()} aria-label="เปิดรายการโซนและร้าน" aria-expanded={isSidebarOpen} className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-zinc-800 bg-zinc-950/95 text-white shadow-lg lg:hidden"><Menu className="h-5 w-5" /></button>}
+          <button onClick={() => setCurrentView('map')} className="flex h-11 min-w-0 items-center gap-2 rounded-xl border border-zinc-800 bg-zinc-950/95 px-2.5 text-left text-white shadow-lg sm:px-3">
+            <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-amber-500 text-zinc-950"><Compass className="h-4 w-4" /></span>
+            <span className="truncate text-xs font-extrabold">Chiang Mai Mookata</span>
           </button>
-        )}
+        </div>
 
-        {/* Brand */}
-        <div 
-          onClick={() => setCurrentView('map')}
-          className="flex items-center gap-2.5 px-3 py-1.5 rounded-xl bg-zinc-950/90 border border-zinc-800/90 shadow-xl backdrop-blur-md cursor-pointer hover:border-zinc-700 transition"
-        >
-          <div className="w-7 h-7 rounded-lg bg-amber-500 flex items-center justify-center text-zinc-950 font-black shadow">
-            <Compass className="w-4 h-4 text-zinc-950" />
-          </div>
-          <div>
-            <div className="flex items-center gap-1.5 leading-none">
-              <span className="text-xs font-extrabold tracking-tight text-white">Chiang Mai Mookata</span>
-              <span className="text-[9px] font-semibold tracking-wider px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-400 border border-zinc-700/60">
-                ร้านหมูกระทะ
-              </span>
-            </div>
-            <p className="text-[10px] text-zinc-400 hidden sm:block m-0 mt-0.5">
-              แผนที่ร้านหมูกระทะและระบบโหวต
-            </p>
-          </div>
+        <nav aria-label="มุมมองหลัก" className="pointer-events-auto hidden items-center gap-1 rounded-xl border border-zinc-800 bg-zinc-950/95 p-1 shadow-lg sm:flex">
+          <button onClick={() => setCurrentView('map')} aria-current={currentView === 'map' ? 'page' : undefined} className={`flex h-9 items-center gap-1.5 rounded-lg px-3 text-xs font-semibold ${currentView === 'map' ? 'bg-white text-zinc-950' : 'text-zinc-300 hover:text-white'}`}><MapIcon className="h-4 w-4" />แผนที่ 3D</button>
+          <button onClick={() => setCurrentView('results')} aria-current={currentView === 'results' ? 'page' : undefined} className={`flex h-9 items-center gap-1.5 rounded-lg px-3 text-xs font-semibold ${currentView === 'results' ? 'bg-white text-zinc-950' : 'text-zinc-300 hover:text-white'}`}><Trophy className="h-4 w-4" />ผลโหวต <span className="tabular-nums opacity-70">{votes.length}</span></button>
+        </nav>
+
+        <div className="pointer-events-auto flex shrink-0 items-center gap-2">
+          <button onClick={() => toggleQrModal(true)} aria-label="แสดง QR เพื่อโหวต" className="flex h-11 items-center gap-1.5 rounded-xl border border-zinc-800 bg-zinc-950/95 px-3 text-xs font-semibold text-white shadow-lg"><QrCode className="h-4 w-4" /><span className="hidden lg:inline">QR โหวต</span></button>
+          <button onClick={() => toggleAddPlace(true)} aria-label="เพิ่มหมุดร้าน" className="flex h-11 items-center gap-1.5 rounded-xl border border-zinc-800 bg-zinc-950/95 px-3 text-xs font-semibold text-white shadow-lg"><PlusCircle className="h-4 w-4" /><span className="hidden lg:inline">เพิ่มหมุด</span></button>
         </div>
       </div>
-
-      {/* Center: View Switcher (Map vs Results) */}
-      <div className="justify-self-center flex items-center gap-1 p-1 rounded-xl bg-zinc-950/90 border border-zinc-800 shadow-xl backdrop-blur-md pointer-events-auto">
-        <button
-          onClick={() => setCurrentView('map')}
-          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition ${
-            currentView === 'map'
-              ? 'bg-zinc-800 text-white shadow-sm'
-              : 'text-zinc-400 hover:text-zinc-200'
-          }`}
-        >
-          <MapIcon className="w-3.5 h-3.5 text-amber-400" />
-          <span>แผนที่ 3D</span>
-        </button>
-
-        <button
-          onClick={() => setCurrentView('results')}
-          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition ${
-            currentView === 'results'
-              ? 'bg-amber-500 text-zinc-950 shadow-sm font-bold'
-              : 'text-zinc-400 hover:text-zinc-200'
-          }`}
-        >
-          <BarChart3 className="w-3.5 h-3.5" />
-          <span>ผลคะแนนโหวต</span>
-          <span className={`text-[10px] font-bold px-1.5 py-0.2 rounded-full ${
-            currentView === 'results' ? 'bg-zinc-950 text-amber-400' : 'bg-zinc-800 text-zinc-300'
-          }`}>
-            {votes.length}
-          </span>
-        </button>
-      </div>
-
-      {/* Right Controls */}
-      <div className="justify-self-end flex items-center gap-2 pointer-events-auto">
-        {/* QR Code Trigger Button */}
-        <button
-          onClick={() => toggleQrModal(true)}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-zinc-900/90 hover:bg-zinc-800 text-zinc-200 border border-zinc-800 shadow-lg backdrop-blur-md text-xs font-semibold transition active:scale-95"
-          title="สแกน QR Code เพื่อโหวตผ่านมือถือ"
-        >
-          <QrCode className="w-4 h-4 text-amber-400" />
-          <span className="hidden md:inline">สแกน QR โหวต</span>
-        </button>
-
-        {/* Zone Selector (Only in Map View on larger screens) */}
-        {currentView === 'map' && (
-          <div className="hidden xl:block relative">
-            <select
-              value={selectedZoneId || 'all'}
-              onChange={(e) => selectZone(e.target.value === 'all' ? null : e.target.value)}
-              className="appearance-none bg-zinc-950/90 hover:bg-zinc-900 text-zinc-200 text-xs font-medium pl-3 pr-7 py-1.5 rounded-xl border border-zinc-800 shadow-lg backdrop-blur-md cursor-pointer transition focus:outline-none"
-            >
-              <option value="all">เลือกโซน ({zones.length - hiddenZoneIds.length} โซน)</option>
-              {zones.filter(z => !hiddenZoneIds.includes(z.id)).map(z => (
-                <option key={z.id} value={z.id}>
-                  {z.name_th} ({z.name_en})
-                </option>
-              ))}
-            </select>
-            <ChevronDown className="w-3.5 h-3.5 text-zinc-400 absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none" />
-          </div>
-        )}
-
-        {/* 2D / 3D Toggle (Only in Map View) */}
-        {currentView === 'map' && (
-          <button
-            onClick={toggle3D}
-            className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-zinc-950/90 hover:bg-zinc-900 text-xs font-bold text-zinc-200 border border-zinc-800 shadow-lg backdrop-blur-md transition active:scale-95"
-            title="สลับ 2D / 3D"
-          >
-            <span className={`w-1.5 h-1.5 rounded-full ${is3D ? 'bg-amber-400' : 'bg-zinc-600'}`} />
-            <span>{is3D ? '3D' : '2D'}</span>
-          </button>
-        )}
-
-        {/* Add Place */}
-        <button
-          onClick={() => toggleAddPlace(true)}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-zinc-950/90 hover:bg-zinc-900 text-xs font-medium text-zinc-200 border border-zinc-800 shadow-lg backdrop-blur-md transition active:scale-95"
-          title="เพิ่มสถานที่"
-        >
-          <PlusCircle className="w-3.5 h-3.5 text-zinc-400" />
-          <span className="hidden sm:inline">เพิ่มหมุด</span>
-        </button>
-      </div>
+      <nav aria-label="มุมมองหลัก" className="pointer-events-auto mt-2 grid grid-cols-2 gap-1 rounded-xl border border-zinc-800 bg-zinc-950/95 p-1 shadow-lg sm:hidden">
+        <button onClick={() => setCurrentView('map')} aria-current={currentView === 'map' ? 'page' : undefined} className={`flex h-11 items-center justify-center gap-2 rounded-lg text-sm font-semibold ${currentView === 'map' ? 'bg-white text-zinc-950' : 'text-zinc-300'}`}><MapIcon className="h-4 w-4" />แผนที่ 3D</button>
+        <button onClick={() => setCurrentView('results')} aria-current={currentView === 'results' ? 'page' : undefined} className={`flex h-11 items-center justify-center gap-2 rounded-lg text-sm font-semibold ${currentView === 'results' ? 'bg-white text-zinc-950' : 'text-zinc-300'}`}><Trophy className="h-4 w-4" />ผลโหวต</button>
+      </nav>
     </header>
   );
 };

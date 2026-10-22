@@ -16,10 +16,14 @@ Deno.serve(async request => {
     if (!isValidIdentifier(body.session_id) || !isValidIdentifier(body.place_id)) {
       return jsonResponse({ error: 'Session or restaurant is invalid' }, 400);
     }
+    if (body.action !== undefined && body.action !== 'remove') {
+      return jsonResponse({ error: 'Vote action is invalid' }, 400);
+    }
 
     const ipHash = await getRequesterIpHash(request);
     const admin = createAdminClient();
-    const { data, error } = await admin.rpc('cast_or_change_vote_by_ip', {
+    const isRemoval = body.action === 'remove';
+    const { data, error } = await admin.rpc(isRemoval ? 'remove_vote_by_ip' : 'cast_or_change_vote_by_ip', {
       p_session_id: body.session_id,
       p_place_id: body.place_id,
       p_ip_hash: ipHash,

@@ -22,18 +22,29 @@ Deno.serve(async request => {
       return jsonResponse({ error: 'เวลาปิดโหวตต้องอยู่ในอนาคต' }, 400);
     }
 
-    const updates: { status?: string; starts_at?: string; ends_at: string } = body.action === 'close_now'
-      ? { status: 'completed', ends_at: new Date().toISOString() }
-      : body.action === 'reopen'
-        ? { status: 'active', starts_at: new Date().toISOString(), ends_at: new Date(body.ends_at).toISOString() }
-        : { ends_at: new Date(body.ends_at).toISOString() };
-
     const admin = createAdminClient();
-    let query = admin.from('voting_sessions').update(updates).eq('id', body.session_id);
-    query = body.action === 'reopen' ? query.eq('status', 'completed') : query.eq('status', 'active');
+    if (body.action === 'reopen') {
+      const { data, error } = await admin.rpc('start_new_vote_round', {
+        p_session_id: body.session_id,
+        p_ends_at: new Date(body.ends_at).toISOString(),
+      });
+      if (error) return jsonResponse({ error: error.message }, 409);
+      return jsonResponse({ session: data });
+    }
+
+    const updates = body.action === 'close_now'
+      ? { status: 'completed', ends_at: new Date().toISOString() }
+      : { ends_at: new Date(body.ends_at).toISOString() };
+    const query = admin.from('voting_sessions').update(updates).eq('id', body.session_id).eq('status', 'active');
     const { data, error } = await query.select('*').maybeSingle();
     if (error) return jsonResponse({ error: error.message }, 500);
-    if (!data) return jsonResponse({ error: body.action === 'reopen' ? 'รอบโหวตนี้เปิดอยู่แล้วหรือไม่มีอยู่' : 'รอบโหวตนี้ปิดไปแล้วหรือไม่มีอยู่' }, 409);
+    if (!data) return jsonResponse({ error: 'รอบโหวตนี้ปิดไปแล้วหรือไม่มีอยู่' }, 409);
+
+    if (body.action === 'close_now') {
+      const finalized = await admin.rpc('finalize_vote_session', { p_session_id: body.session_id });
+      if (finalized.error) return jsonResponse({ error: finalized.error.message }, 500);
+      return jsonResponse({ session: finalized.data });
+    }
 
     return jsonResponse({ session: data });
   } catch (error) {
