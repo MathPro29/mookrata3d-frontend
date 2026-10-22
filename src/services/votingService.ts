@@ -78,6 +78,14 @@ export interface VoteResult {
 }
 
 export class VotingService {
+  static async resolveGoogleMapsLink(url: string): Promise<{ url: string; latitude: number; longitude: number; name?: string }> {
+    if (!supabase) throw new Error('การถอดลิงก์ Google Maps ต้องเชื่อมต่อระบบ');
+    const { data, error } = await supabase.functions.invoke('resolve-google-maps-link', { body: { url } });
+    if (error) throw new Error(error.message);
+    if (data?.error) throw new Error(data.error);
+    return data;
+  }
+
   /**
    * Retrieves active voting session
    */
@@ -207,23 +215,25 @@ export class VotingService {
   static async getPlaces(sessionId?: string): Promise<Place[]> {
     if (isSupabaseConfigured && supabase) {
       if (sessionId) {
-        const { data: candidates, error: candidateError } = await supabase
-          .from('voting_session_places')
-          .select('place_id')
-          .eq('session_id', sessionId);
-        if (candidateError) throw new Error(candidateError.message);
-        const candidateIds = (candidates || []).map(candidate => candidate.place_id);
-        if (candidateIds.length === 0) {
-          return includeMapLinkedPlaces(initialPlaces.filter(isMookataPlace));
-        }
-
-        const { data, error } = await supabase
-          .from('places')
+        const [{ data: candidates, error: candidateError }, { data: pending, error: pendingError }, { data, error }] = await Promise.all([
+          supabase.from('voting_session_places').select('place_id').eq('session_id', sessionId),
+          supabase.from('pending_voting_session_places').select('place_id').eq('session_id', sessionId),
+          supabase.from('places')
           .select('*')
-          .in('id', candidateIds)
-          .order('name', { ascending: true });
+          .order('name', { ascending: true }),
+        ]);
+        if (candidateError) throw new Error(candidateError.message);
+        if (pendingError) throw new Error(pendingError.message);
         if (error) throw new Error(error.message);
-        return includeMapLinkedPlaces((data || []) as Place[]);
+        const candidateIds = new Set((candidates || []).map(candidate => candidate.place_id));
+        const pendingIds = new Set((pending || []).map(candidate => candidate.place_id));
+        return includeMapLinkedPlaces(((data || []) as Place[]).map(place => ({
+          ...place,
+          is_voting_candidate: candidateIds.has(place.id),
+        })).filter(place => candidateIds.has(place.id) || pendingIds.has(place.id))).map(place => ({
+          ...place,
+          is_voting_candidate: candidateIds.has(place.id),
+        }));
       }
 
       const { data, error } = await supabase
@@ -252,7 +262,7 @@ export class VotingService {
    * Retrieves all votes for session
    */
   static async getVotes(sessionId: string): Promise<Vote[]> {
-    const candidateIds = new Set((await this.getPlaces(sessionId)).map(place => place.id));
+    const candidateIds = new Set((await this.getPlaces(sessionId)).filter(place => place.is_voting_candidate !== false).map(place => place.id));
     if (isSupabaseConfigured && supabase) {
       const { data, error } = await supabase
         .from('votes')
@@ -312,7 +322,7 @@ export class VotingService {
       throw new Error('Voting session is not active');
     }
     const candidates = await this.getPlaces(sessionId);
-    if (!candidates.some(place => place.id === placeId)) {
+    if (!candidates.some(place => place.id === placeId && place.is_voting_candidate !== false)) {
       throw new Error('Place is not a registered candidate for this voting session');
     }
 
@@ -418,14 +428,17 @@ export class VotingService {
     }
 
     if (isSupabaseConfigured && supabase) {
-      const session = await this.getActiveSession();
-      if (!session) throw new Error('ยังไม่มีรอบโหวตที่เปิดใช้งาน');
       const { error } = await supabase.from('places').insert(place);
       if (error) throw new Error(error.message);
-      const { error: candidateError } = await supabase
-        .from('voting_session_places')
-        .insert({ session_id: session.id, place_id: place.id });
-      if (candidateError) throw new Error(candidateError.message);
+      const session = await this.getActiveSession();
+      if (session) {
+        const isVoting = session.status === 'active' && Date.now() >= Date.parse(session.starts_at) && Date.now() <= Date.parse(session.ends_at);
+        const { error: candidateError } = await supabase
+          .from(isVoting ? 'pending_voting_session_places' : 'voting_session_places')
+          .insert({ session_id: session.id, place_id: place.id });
+        if (candidateError) throw new Error(candidateError.message);
+      }
+      return { ...place, is_voting_candidate: Boolean(session && !(session.status === 'active' && Date.now() >= Date.parse(session.starts_at) && Date.now() <= Date.parse(session.ends_at))) };
     } else {
       const places = await this.getPlaces();
       places.push(place);
@@ -435,7 +448,7 @@ export class VotingService {
       }
     }
 
-    return place;
+    return { ...place, is_voting_candidate: true };
   }
 
   /**
@@ -462,6 +475,9 @@ export class VotingService {
             notifyUpdateSubscribers({ type: 'PLACES_UPDATE', payload });
           })
           .on('postgres_changes', { event: '*', schema: 'public', table: 'voting_session_places' }, payload => {
+            notifyUpdateSubscribers({ type: 'PLACES_UPDATE', payload });
+          })
+          .on('postgres_changes', { event: '*', schema: 'public', table: 'pending_voting_session_places' }, payload => {
             notifyUpdateSubscribers({ type: 'PLACES_UPDATE', payload });
           })
           .on('postgres_changes', { event: '*', schema: 'public', table: 'voting_sessions' }, payload => {

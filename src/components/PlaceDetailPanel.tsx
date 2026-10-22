@@ -3,12 +3,6 @@ import { ExternalLink, X } from 'lucide-react';
 import { useAppStore } from '../store/useAppStore';
 import type { Place } from '../types';
 
-const promotionPlaceIds = new Set([
-  'place-jinbe-shabu-sushi-buffet',
-  'place-moo-ood-old-city',
-  'place-yukata-shabu-chang-phueak',
-]);
-
 const getPlaceMapsUrl = (place: Pick<Place, 'google_maps_url' | 'name' | 'address'>) => {
   try {
     const url = new URL(place.google_maps_url);
@@ -81,10 +75,10 @@ export const PlaceDetailPanel: React.FC = () => {
           </div>
         )}
 
-        {promotionPlaceIds.has(place.id) && (
+        {place.is_thai_helps_thai && (
           <img
             src={`${import.meta.env.BASE_URL}images/promotion-banner.jpg`}
-            alt="ร้านนี้เข้าร่วมโครงการคนละครึ่งพลัส"
+            alt="ร้านนี้เข้าร่วมโครงการไทยช่วยไทย"
             loading="lazy"
             className="block h-auto w-full rounded-xl border border-zinc-800"
           />

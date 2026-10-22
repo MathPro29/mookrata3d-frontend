@@ -380,7 +380,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     const { places, zones, votes, activeSession, hiddenZoneIds } = get();
     if (!activeSession) return [];
 
-    const visiblePlaces = places.filter(place => !hiddenZoneIds.includes(place.zone_id));
+    const visiblePlaces = places.filter(place => place.is_voting_candidate !== false && !hiddenZoneIds.includes(place.zone_id));
     const visiblePlaceIds = new Set(visiblePlaces.map(place => place.id));
     const visibleVotes = votes.filter(vote =>
       vote.session_id === activeSession.id && visiblePlaceIds.has(vote.place_id)

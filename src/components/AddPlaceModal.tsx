@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useAppStore } from '../store/useAppStore';
+import { VotingService } from '../services/votingService';
 import { 
   X, 
   PlusCircle, 
@@ -12,6 +13,7 @@ export const AddPlaceModal: React.FC = () => {
     isAddPlaceOpen,
     toggleAddPlace,
     zones,
+    activeSession,
     addPlace,
     selectPlace
   } = useAppStore();
@@ -20,6 +22,8 @@ export const AddPlaceModal: React.FC = () => {
   const [nameEn, setNameEn] = useState('');
   const [zoneId, setZoneId] = useState(zones[0]?.id || 'zone-old-city');
   const [category, setCategory] = useState('ร้านอาหาร & หมูกระทะ');
+  const [price, setPrice] = useState('');
+  const [isThaiHelpsThai, setIsThaiHelpsThai] = useState(false);
   const [googleMapsUrl, setGoogleMapsUrl] = useState('');
   const [latitude, setLatitude] = useState('');
   const [longitude, setLongitude] = useState('');
@@ -29,16 +33,26 @@ export const AddPlaceModal: React.FC = () => {
   const [status, setStatus] = useState<'verified' | 'pending_verification'>('verified');
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isResolvingLink, setIsResolvingLink] = useState(false);
 
   if (!isAddPlaceOpen) return null;
 
   // Auto-parse coordinates from Google Maps URLs like @18.7816,98.9932 or ?q=18.7816,98.9932
   const handleUrlChange = (val: string) => {
     setGoogleMapsUrl(val);
+    try {
+      const pathName = new URL(val).pathname.match(/\/maps\/place\/([^/]+)/)?.[1];
+      if (pathName && !name) setName(decodeURIComponent(pathName.replaceAll('+', ' ')));
+    } catch {
+      // Let the user finish pasting an incomplete URL.
+    }
     const atMatch = val.match(/@(-?\d+\.\d+),(-?\d+\.\d+)/);
-    if (atMatch) {
-      setLatitude(atMatch[1]);
-      setLongitude(atMatch[2]);
+    const googleCoordinates = val.match(/!3d(-?\d+\.\d+)!4d(-?\d+\.\d+)/);
+    const reversedGoogleCoordinates = val.match(/!2d(-?\d+\.\d+)!3d(-?\d+\.\d+)/);
+    const coordinates = atMatch || googleCoordinates;
+    if (coordinates || reversedGoogleCoordinates) {
+      setLatitude(coordinates ? coordinates[1] : reversedGoogleCoordinates![2]);
+      setLongitude(coordinates ? coordinates[2] : reversedGoogleCoordinates![1]);
       setStatus('verified');
       return;
     }
@@ -51,6 +65,25 @@ export const AddPlaceModal: React.FC = () => {
     }
   };
 
+  const handleUrlBlur = async () => {
+    if (!googleMapsUrl || latitude || longitude || !/https:\/\/(maps\.app\.goo\.gl|goo\.gl)\//i.test(googleMapsUrl)) return;
+    const requestedUrl = googleMapsUrl;
+    setIsResolvingLink(true);
+    try {
+      const resolved = await VotingService.resolveGoogleMapsLink(requestedUrl);
+      if (googleMapsUrl !== requestedUrl) return;
+      setGoogleMapsUrl(resolved.url);
+      setLatitude(String(resolved.latitude));
+      setLongitude(String(resolved.longitude));
+      if (resolved.name && !name) setName(resolved.name);
+      setStatus('verified');
+    } catch (err) {
+      setError(err instanceof Error ? `${err.message} (กรอกพิกัดเองได้)` : 'ถอดลิงก์ไม่สำเร็จ กรุณากรอกพิกัดเอง');
+    } finally {
+      setIsResolvingLink(false);
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
@@ -59,9 +92,22 @@ export const AddPlaceModal: React.FC = () => {
       setError('กรุณาระบุชื่อร้านหมูกระทะ');
       return;
     }
+    if (!googleMapsUrl.trim()) {
+      setError('กรุณาวางลิงก์ Google Maps ของร้าน');
+      return;
+    }
+    if (!price.trim()) {
+      setError('กรุณาระบุราคา');
+      return;
+    }
 
     let lat = parseFloat(latitude);
     let lng = parseFloat(longitude);
+
+    if (googleMapsUrl.trim() && (!Number.isFinite(lat) || !Number.isFinite(lng))) {
+      setError('อ่านพิกัดจากลิงก์ไม่ได้ กรุณาใช้ลิงก์ Google Maps ที่มีพิกัดหรือกรอกพิกัดเอง');
+      return;
+    }
 
     // If coordinates are missing, set status to pending_verification and fallback to zone center
     let finalStatus: 'verified' | 'pending_verification' = status;
@@ -84,6 +130,8 @@ export const AddPlaceModal: React.FC = () => {
         name_en: nameEn.trim() || undefined,
         zone_id: zoneId,
         category,
+        price: price.trim(),
+        is_thai_helps_thai: isThaiHelpsThai,
         google_maps_url: googleMapsUrl.trim() || `https://maps.google.com/?q=${lat},${lng}`,
         latitude: lat,
         longitude: lng,
@@ -114,7 +162,7 @@ export const AddPlaceModal: React.FC = () => {
             </div>
             <div>
               <h2 className="text-sm sm:text-base font-bold text-white m-0">เพิ่มร้านหมูกระทะ</h2>
-              <p className="text-[11px] text-zinc-400 m-0">ปักหมุดร้านพร้อมพิกัดบนแผนที่</p>
+              <p className="text-[11px] text-zinc-400 m-0">{activeSession?.status === 'active' && Date.now() >= Date.parse(activeSession.starts_at) && Date.now() <= Date.parse(activeSession.ends_at) ? 'หมุดจะแสดงบนแผนที่และเข้าโหวตรอบถัดไป' : 'เพิ่มหมุดและใส่เป็นตัวเลือกโหวตได้ทันที'}</p>
             </div>
           </div>
 
@@ -148,6 +196,20 @@ export const AddPlaceModal: React.FC = () => {
               onChange={(e) => setName(e.target.value)}
               className="w-full bg-zinc-900 text-zinc-100 px-3 py-2 rounded-xl border border-zinc-700 focus:outline-none focus:border-amber-500"
             />
+          </div>
+
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <div>
+              <label htmlFor="place-price" className="mb-1 block font-semibold text-zinc-300">ราคา *</label>
+              <input id="place-price" type="text" required value={price} onChange={event => setPrice(event.target.value)} placeholder="เช่น 199 บาท / เริ่มต้น 199 บาท" className="w-full rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2 text-zinc-100 focus:border-amber-500 focus:outline-none" />
+            </div>
+            <fieldset className="m-0 min-w-0 border-0 p-0">
+              <legend className="mb-1 font-semibold text-zinc-300">เข้าร่วมโครงการไทยช่วยไทยไหม?</legend>
+              <div className="grid grid-cols-2 gap-2" role="group" aria-label="การเข้าร่วมโครงการไทยช่วยไทย">
+                <button type="button" aria-pressed={isThaiHelpsThai} onClick={() => setIsThaiHelpsThai(true)} className={`rounded-xl border px-3 py-2 font-bold ${isThaiHelpsThai ? 'border-emerald-400 bg-emerald-400 text-zinc-950' : 'border-zinc-700 bg-zinc-900 text-zinc-200'}`}>มี</button>
+                <button type="button" aria-pressed={!isThaiHelpsThai} onClick={() => setIsThaiHelpsThai(false)} className={`rounded-xl border px-3 py-2 font-bold ${!isThaiHelpsThai ? 'border-zinc-400 bg-zinc-700 text-white' : 'border-zinc-700 bg-zinc-900 text-zinc-200'}`}>ไม่มี</button>
+              </div>
+            </fieldset>
           </div>
 
           {/* English Name */}
@@ -211,8 +273,10 @@ export const AddPlaceModal: React.FC = () => {
               placeholder="https://maps.app.goo.gl/... หรือ https://www.google.com/maps/place/..."
               value={googleMapsUrl}
               onChange={(e) => handleUrlChange(e.target.value)}
+              onBlur={() => void handleUrlBlur()}
               className="w-full bg-zinc-900 text-zinc-100 px-3 py-2 rounded-xl border border-zinc-700 focus:outline-none focus:border-amber-500 font-mono text-[11px]"
             />
+            {isResolvingLink && <p className="mb-0 mt-1 text-[10px] text-amber-300" role="status">กำลังอ่านพิกัดจากลิงก์…</p>}
           </div>
 
           {/* Coordinates Grid */}
@@ -283,7 +347,7 @@ export const AddPlaceModal: React.FC = () => {
           <div className="pt-2">
             <button
               type="submit"
-              disabled={isSubmitting}
+              disabled={isSubmitting || isResolvingLink}
               className="w-full py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-zinc-950 font-bold text-xs transition shadow-lg flex items-center justify-center gap-2 active:scale-98"
             >
               {isSubmitting ? 'กำลังบันทึก...' : 'บันทึกและปักหมุดบนแผนที่ 3D'}

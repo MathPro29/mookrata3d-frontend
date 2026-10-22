@@ -33,10 +33,12 @@ export interface Place {
   google_maps_url: string;
   review_url?: string;
   price?: string;
+  is_thai_helps_thai?: boolean;
   category: string;
   verification_status: VerificationStatus;
   created_at: string;
   votes_count?: number;
+  is_voting_candidate?: boolean;
 }
 
 export type SessionStatus = 'active' | 'completed' | 'draft';
