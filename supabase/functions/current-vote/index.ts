@@ -1,6 +1,6 @@
 import {
   createAdminClient,
-  getRequesterIpHash,
+  getVoterHash,
   handleOptions,
   isValidIdentifier,
   jsonResponse,
@@ -18,12 +18,12 @@ Deno.serve(async request => {
     }
 
     const admin = createAdminClient();
-    const ipHash = await getRequesterIpHash(request);
+    const voterHash = await getVoterHash(body.user_id);
     const { data: lock, error: lockError } = await admin
-      .from('vote_ip_locks')
+      .from('vote_device_locks')
       .select('vote_id')
       .eq('session_id', body.session_id)
-      .eq('ip_hash', ipHash)
+      .eq('voter_hash', voterHash)
       .maybeSingle();
     if (lockError) return jsonResponse({ error: lockError.message }, 500);
     if (!lock) return jsonResponse({ place_id: null });
@@ -37,7 +37,7 @@ Deno.serve(async request => {
     return jsonResponse({ place_id: vote?.place_id ?? null });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Vote status could not be loaded';
-    const status = message.includes('IP is unavailable') ? 503 : 500;
+    const status = message === 'Voter identity is invalid' ? 400 : 500;
     return jsonResponse({ error: message }, status);
   }
 });

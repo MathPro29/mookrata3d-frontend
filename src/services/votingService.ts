@@ -168,7 +168,7 @@ export class VotingService {
   static async getCurrentUserVote(sessionId: string, userId: string): Promise<string | null> {
     if (isSupabaseConfigured && supabase) {
       const { data, error } = await supabase.functions.invoke('current-vote', {
-        body: { session_id: sessionId },
+        body: { session_id: sessionId, user_id: userId },
       });
       if (error) throw new Error(error.message);
       if (data?.error) throw new Error(data.error);
@@ -341,7 +341,7 @@ export class VotingService {
     // 1. Supabase Cloud Execution
     if (isSupabaseConfigured && supabase) {
       const { data, error } = await supabase.functions.invoke('cast-vote', {
-        body: { session_id: sessionId, place_id: placeId },
+        body: { session_id: sessionId, place_id: placeId, user_id: userId },
       });
 
       if (error) {
@@ -423,7 +423,7 @@ export class VotingService {
   static async removeVote(sessionId: string, placeId: string, userId: string): Promise<VoteResult> {
     if (isSupabaseConfigured && supabase) {
       const { data, error } = await supabase.functions.invoke('cast-vote', {
-        body: { session_id: sessionId, place_id: placeId, action: 'remove' },
+        body: { session_id: sessionId, place_id: placeId, user_id: userId, action: 'remove' },
       });
       if (error) throw new Error(error.message);
       if (data?.error) throw new Error(data.error);
