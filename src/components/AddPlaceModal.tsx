@@ -166,7 +166,7 @@ export const AddPlaceModal: React.FC = () => {
             </div>
             <div>
               <h2 className="text-sm sm:text-base font-bold text-white m-0">เพิ่มร้านหมูกระทะ</h2>
-              <p className="text-[11px] text-zinc-400 m-0">{activeSession?.status === 'active' && Date.now() >= Date.parse(activeSession.starts_at) && Date.now() <= Date.parse(activeSession.ends_at) ? 'หมุดจะแสดงบนแผนที่และเข้าโหวตรอบถัดไป' : 'เพิ่มหมุดและใส่เป็นตัวเลือกโหวตได้ทันที'}</p>
+              <p className="text-[11px] text-zinc-400 m-0">{activeSession?.status === 'active' && Date.now() >= Date.parse(activeSession.starts_at) && Date.now() <= Date.parse(activeSession.ends_at) ? 'ร้านจะเข้าเป็นตัวเลือกในรอบนี้ คะแนนที่มีอยู่ยังอยู่ครบ' : 'เพิ่มหมุดและใส่เป็นตัวเลือกโหวตได้ทันที'}</p>
             </div>
           </div>
 

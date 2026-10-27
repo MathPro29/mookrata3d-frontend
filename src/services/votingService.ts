@@ -469,13 +469,12 @@ export class VotingService {
       if (error) throw new Error(error.message);
       const session = await this.getActiveSession();
       if (session) {
-        const isVoting = session.status === 'active' && Date.now() >= Date.parse(session.starts_at) && Date.now() <= Date.parse(session.ends_at);
         const { error: candidateError } = await supabase
-          .from(isVoting ? 'pending_voting_session_places' : 'voting_session_places')
+          .from('voting_session_places')
           .insert({ session_id: session.id, place_id: place.id });
         if (candidateError) throw new Error(candidateError.message);
       }
-      return { ...place, is_voting_candidate: Boolean(session && !(session.status === 'active' && Date.now() >= Date.parse(session.starts_at) && Date.now() <= Date.parse(session.ends_at))) };
+      return { ...place, is_voting_candidate: Boolean(session) };
     } else {
       const places = await this.getPlaces();
       places.push(place);

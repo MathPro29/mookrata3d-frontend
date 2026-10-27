@@ -29,10 +29,10 @@ try {
   assert.equal(completed.final_results.total_votes, 3);
   assert.equal(completed.final_results.winning_vote_count, 2);
   assert.deepEqual(completed.final_results.winners.map(winner => winner.place_id), [first.id]);
-  assert.deepEqual(await VotingService.getVotes(sessionId), []);
-  assert.equal(JSON.parse(storage.get('cm_map_local_votes_v1')).length, 1);
+  assert.equal((await VotingService.getVotes(sessionId)).length, 3);
+  assert.equal(JSON.parse(storage.get('cm_map_local_votes_v1')).length, 4);
   assert.deepEqual((await VotingService.finalizeSession(sessionId)).final_results, completed.final_results);
-  console.log('Vote round reset checks passed');
+  console.log('Vote round finalization checks passed');
 } finally {
   await server.close();
 }
